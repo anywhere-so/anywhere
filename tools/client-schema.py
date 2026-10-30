@@ -9,10 +9,29 @@ from pathlib import Path
 import sys
 
 OPERATIONS = {
-    'app_list', 'app_view', 'app_delete', 'deploy_create', 'app_logs',
-    'secret_list', 'secret_set', 'secret_unset', 'app_ticket_create',
-    'operation_view', 'share_list', 'share_add', 'share_remove',
-    'shared_app_list', 'me_view', 'cli_login_create', 'cli_login_token',
+    'account_usage',
+    'app_access_get',
+    'app_access_set',
+    'app_delete',
+    'app_list',
+    'app_logs',
+    'app_ticket_create',
+    'app_usage',
+    'app_view',
+    'cli_login_create',
+    'cli_login_token',
+    'deploy_create',
+    'me_view',
+    'operation_cancel',
+    'operation_view',
+    'secret_list',
+    'secret_set',
+    'secret_unset',
+    'secrets_set',
+    'share_add',
+    'share_list',
+    'share_remove',
+    'shared_app_list',
 }
 
 

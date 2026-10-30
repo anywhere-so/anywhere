@@ -7,7 +7,10 @@ use std::path::Path;
 use std::sync::mpsc::{self, RecvTimeoutError};
 use std::time::Duration;
 
-use control_api::{MAX_SECRET_REQUEST_LEN, MAX_SECRET_VALUE_LEN, SecretRequest, SecretValueError};
+use control_api::{
+    MAX_SECRET_REQUEST_LEN, MAX_SECRET_VALUE_LEN, MAX_SECRETS_REQUEST_LEN, SecretRequest,
+    SecretValueError,
+};
 use naming::SecretName;
 use tokio::time::Instant;
 
@@ -20,8 +23,12 @@ use crate::operations;
 use crate::output::{Output, ResultData};
 use crate::settings::API_TIMEOUT;
 
-/// How long a change waits for a running app to restart with it.
-const CHANGE_DEADLINE: Duration = Duration::from_secs(10 * 60);
+/// How long a change waits for a running app to restart with it: past the
+/// control plane's longest wait for an app to start, a minute and as much of
+/// its `start_timeout`, at most 20 minutes, as is past the default 30 seconds,
+/// so the operation's own outcome, not the CLI's timeout, is what an agent
+/// reads.
+pub(crate) const CHANGE_DEADLINE: Duration = Duration::from_secs(22 * 60);
 
 /// How long standard input may take to give the whole value and end: ample for
 /// one piped in, while a harness that leaves standard input open can't hang the
@@ -80,6 +87,46 @@ pub async fn set(
         })?
         .into_inner();
     follow(&control, operation, &format!("Setting {name}"), output).await
+}
+
+/// Sets every secret in the dotenv file at `path` (`env_file.rs`) in one
+/// change, which restarts a running app once: all of them, or, if the
+/// platform refuses any, none.
+pub async fn set_env_file(
+    path: &Path,
+    app: Option<&str>,
+    output: &mut Output,
+) -> Result<ResultData, CliError> {
+    let target = target(app)?;
+    let request = crate::env_file::read(path, target.from_folder)?;
+    let len = serde_json::to_vec(&request)
+        .map_err(|error| CliError::Internal {
+            detail: format!("couldn't write the request as JSON: {error}"),
+        })?
+        .len();
+    if len > MAX_SECRETS_REQUEST_LEN {
+        return Err(CliError::SecretsRequestTooLarge { len });
+    }
+    let names: Vec<_> = request
+        .secrets
+        .iter()
+        .map(|secret| secret.name.as_str())
+        .collect();
+    let what = format!("Setting {}", names.join(", "));
+    let (control, _) = control::connect()?;
+    // Never retried here: each PATCH is another change, which restarts the app again.
+    let operation = control
+        .client
+        .secrets_set(target.app.name.as_str(), target.app.owner(), &request)
+        .await
+        .map_err(|error| {
+            unconfirmed(
+                control.error(error),
+                "if it did, the app restarts once more with the same values",
+            )
+        })?
+        .into_inner();
+    follow(&control, operation, &what, output).await
 }
 
 pub async fn unset(

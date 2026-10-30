@@ -3,7 +3,7 @@
 //! `anywhere/<version> (contract <N>)`, which every hop to the gateway keeps,
 //! while the front door strips `anywhere-` headers. The gateway refuses a CLI
 //! on another contract with `cli_outdated` before the request goes anywhere
-//! (at the API boundary), so a route or field the CLI relies on that has
+//! (the API boundary), so a route or field the CLI relies on that has
 //! since changed never answers it with something else.
 
 use http::HeaderMap;
@@ -13,7 +13,7 @@ use http::header::USER_AGENT;
 /// routes, requests and answers, the upload and exec streams, and what
 /// `app.toml` may hold. A change that breaks any of them for a CLI already
 /// installed raises it by one (the HTTP and streaming contracts).
-pub const CONTRACT: u32 = 2;
+pub const CONTRACT: u32 = 5;
 
 /// The code of the error a CLI on another contract gets.
 pub const CLI_OUTDATED: &str = "cli_outdated";
@@ -115,6 +115,9 @@ mod tests {
         // A proxy's addition after it changes nothing.
         let added = format!("{agent},gzip(gfe)");
         assert_eq!(of(&[added.as_bytes()]), Ok(()));
+        // A release's, stamped with its commit (cli/build.rs).
+        let stamped = cli_user_agent("0.0.0+d6bb92e4a7a2");
+        assert_eq!(of(&[stamped.as_bytes()]), Ok(()));
     }
 
     #[test]

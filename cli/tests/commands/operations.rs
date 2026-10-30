@@ -1,5 +1,80 @@
 use super::*;
 
+/// A deploy as `POST /v1/operations/{id}/cancel` answers once it's cancelled.
+fn cancelled() -> Value {
+    let mut cancelled = operation("failed");
+    cancelled["error"] = json!({
+        "code": "deploy_cancelled",
+        "message": "the deploy was cancelled while its app started",
+        "retryable": false,
+    });
+    cancelled
+}
+
+#[tokio::test]
+async fn cancel_ends_a_deploy_and_says_so_with_one_request() {
+    let server = Server::start(vec![reply(cancelled())]).await;
+    let output = server.run(&["--json", "operations", "cancel", ID]).await;
+    let result = success(&output);
+    assert_eq!(result["state"], "failed");
+    assert_eq!(result["error"]["code"], "deploy_cancelled");
+    let progress = text(&output.stderr);
+    assert!(
+        progress.contains(&format!("Cancelled deploy {ID}: the deploy was cancelled")),
+        "{progress}"
+    );
+    assert_eq!(
+        server.paths(),
+        [format!("POST /v1/operations/{ID}/cancel HTTP/1.1")]
+    );
+}
+
+#[tokio::test]
+async fn cancel_is_never_retried_and_shows_the_platforms_refusal() {
+    let server = Server::start(vec![Reply {
+        status: 409,
+        ..reply(json!({
+            "code": "operation_ended",
+            "message": "it had already succeeded",
+            "retryable": false,
+        }))
+    }])
+    .await;
+    let error = failure(
+        &server.run(&["--json", "operations", "cancel", ID]).await,
+        "operation_ended",
+    );
+    assert_eq!(error["operation"], ID);
+    assert_eq!(error["retryable"], false);
+    assert_eq!(server.paths().len(), 1);
+
+    // A temporary failure says repeating it is safe, and isn't repeated.
+    let server = Server::start(vec![Reply {
+        status: 503,
+        ..reply(json!({"code": "database_unavailable", "message": "later", "retryable": true}))
+    }])
+    .await;
+    let error = failure(
+        &server.run(&["--json", "operations", "cancel", ID]).await,
+        "database_unavailable",
+    );
+    assert_eq!(error["retryable"], true);
+    assert_eq!(server.paths().len(), 1);
+}
+
+#[tokio::test]
+async fn cancel_refuses_an_answer_that_isnt_its_cancelled_deploy() {
+    let mut other = cancelled();
+    other["id"] = json!("01999dd0-7f9a-7000-8000-000000000002");
+    for answer in [other, operation("running")] {
+        let server = Server::start(vec![reply(answer)]).await;
+        failure(
+            &server.run(&["--json", "operations", "cancel", ID]).await,
+            "api_answer_invalid",
+        );
+    }
+}
+
 #[tokio::test]
 async fn waits_for_an_existing_operation_without_posting_a_deploy() {
     let server = Server::start(vec![
@@ -23,6 +98,32 @@ async fn waits_for_an_existing_operation_without_posting_a_deploy() {
         server.paths(),
         vec![format!("GET /v1/operations/{ID} HTTP/1.1"); 2]
     );
+}
+
+#[tokio::test]
+async fn waiting_without_a_timeout_reads_the_operations_kind_first() {
+    let server = Server::start(vec![
+        reply(operation("running")),
+        reply(operation("running")),
+        reply(operation("succeeded")),
+    ])
+    .await;
+    let output = server
+        .run(&["--json", "operations", "get", ID, "--wait"])
+        .await;
+    assert_eq!(success(&output)["state"], "succeeded");
+    assert_eq!(
+        server.paths(),
+        vec![format!("GET /v1/operations/{ID} HTTP/1.1"); 3]
+    );
+
+    // One that has ended already is read once.
+    let server = Server::start(vec![reply(operation("succeeded"))]).await;
+    let output = server
+        .run(&["--json", "operations", "get", ID, "--wait"])
+        .await;
+    assert_eq!(success(&output)["state"], "succeeded");
+    assert_eq!(server.paths().len(), 1);
 }
 
 #[tokio::test]
@@ -122,17 +223,26 @@ async fn starting_a_deploy_is_never_retried_and_is_not_safe_to_repeat_blindly() 
     let app = dir.path().join("hello");
     std::fs::create_dir(&app).unwrap();
     std::fs::write(app.join("app.toml"), TOML).unwrap();
-    let server = Server::start(vec![Reply {
-        status: 503,
-        ..reply(json!({"code":"busy","message":"try later","retryable":true}))
-    }])
+    let server = Server::start(vec![
+        no_logs(),
+        Reply {
+            status: 503,
+            ..reply(json!({"code":"busy","message":"try later","retryable":true}))
+        },
+    ])
     .await;
     let output = server
         .run(&["deploy", app.to_str().unwrap(), "--json"])
         .await;
     let error = failure(&output, "busy");
     assert_eq!(error["retryable"], false);
-    assert_eq!(server.paths(), ["POST /v1/apps/hello/deploys HTTP/1.1"]);
+    assert_eq!(
+        server.paths(),
+        [
+            "GET /v1/apps/hello/logs?after=end&events=true&follow=false HTTP/1.1",
+            "POST /v1/apps/hello/deploys HTTP/1.1"
+        ]
+    );
 }
 
 #[tokio::test]
@@ -141,10 +251,13 @@ async fn a_lost_deploy_reply_does_not_cause_a_second_post() {
     let app = dir.path().join("hello");
     std::fs::create_dir(&app).unwrap();
     std::fs::write(app.join("app.toml"), TOML).unwrap();
-    let server = Server::start(vec![Reply {
-        status: 0,
-        ..reply(json!(null))
-    }])
+    let server = Server::start(vec![
+        no_logs(),
+        Reply {
+            status: 0,
+            ..reply(json!(null))
+        },
+    ])
     .await;
     let output = server
         .run(&["deploy", app.to_str().unwrap(), "--json"])
@@ -152,7 +265,20 @@ async fn a_lost_deploy_reply_does_not_cause_a_second_post() {
     let error = failure(&output, "api_unreachable");
     assert_eq!(error["retryable"], false);
     assert_eq!(error["operation"], Value::Null);
-    assert_eq!(server.paths(), ["POST /v1/apps/hello/deploys HTTP/1.1"]);
+    assert_eq!(
+        server.paths(),
+        [
+            "GET /v1/apps/hello/logs?after=end&events=true&follow=false HTTP/1.1",
+            "POST /v1/apps/hello/deploys HTTP/1.1"
+        ]
+    );
+}
+
+fn no_logs() -> Reply {
+    Reply {
+        status: 404,
+        ..reply(json!({"code":"no_logs", "message":"deploy the app first", "retryable":false}))
+    }
 }
 
 /// A folder named `name` holding `toml`, as its app.toml.
@@ -180,7 +306,7 @@ async fn a_background_deploy_names_the_app_and_has_no_url() {
     let app = app_dir(&dir, "ticker", WORKER_TOML);
     let mut done = operation("succeeded");
     done["url"] = Value::Null;
-    let server = Server::start(vec![started(done)]).await;
+    let server = Server::start(vec![no_logs(), started(done)]).await;
     let output = server
         .run(&["deploy", app.to_str().unwrap(), "--json"])
         .await;
@@ -198,7 +324,7 @@ async fn a_deploy_whose_address_doesnt_fit_its_kind_of_app_fails_as_our_bug() {
     let mut no_address = operation("succeeded");
     no_address["url"] = Value::Null;
     for (app, done) in [(web, no_address), (background, operation("succeeded"))] {
-        let server = Server::start(vec![started(done)]).await;
+        let server = Server::start(vec![no_logs(), started(done)]).await;
         let output = server
             .run(&["deploy", app.to_str().unwrap(), "--json"])
             .await;

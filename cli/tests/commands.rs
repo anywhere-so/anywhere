@@ -36,6 +36,10 @@ mod secrets;
 mod shares;
 #[path = "commands/skill.rs"]
 mod skill;
+#[path = "commands/token.rs"]
+mod token;
+#[path = "commands/usage.rs"]
+mod usage;
 
 const ID: &str = "01999dd0-7f9a-7000-8000-000000000001";
 const SECRET: &str = "test-cli-token";
@@ -47,6 +51,16 @@ struct Reply {
     delay: Duration,
     /// Bytes to answer with in place of `body`, as an app's logs come.
     raw: Option<&'static [u8]>,
+    /// A follow's events to answer with in place of `body`, as they come.
+    stream: Option<Streamed>,
+}
+
+/// An answer that streams: each part after its wait, then an end, or with
+/// `cut`, a connection that drops.
+#[derive(Clone)]
+struct Streamed {
+    parts: Vec<(Duration, Vec<u8>)>,
+    cut: bool,
 }
 
 fn reply(body: Value) -> Reply {
@@ -55,6 +69,7 @@ fn reply(body: Value) -> Reply {
         body,
         delay: Duration::ZERO,
         raw: None,
+        stream: None,
     }
 }
 
@@ -113,6 +128,27 @@ impl Server {
                     continue;
                 }
                 tokio::time::sleep(answer.delay).await;
+                if let Some(streamed) = answer.stream.clone() {
+                    let head = "HTTP/1.1 200 Test\r\nContent-Type: text/event-stream\r\nTransfer-Encoding: chunked\r\nConnection: close\r\n\r\n";
+                    let mut sent = socket.write_all(head.as_bytes()).await;
+                    for (wait, part) in streamed.parts {
+                        tokio::time::sleep(wait).await;
+                        let mut chunk = format!("{:x}\r\n", part.len()).into_bytes();
+                        chunk.extend_from_slice(&part);
+                        chunk.extend_from_slice(b"\r\n");
+                        sent = sent.and(socket.write_all(&chunk).await);
+                    }
+                    if !streamed.cut {
+                        sent = sent.and(socket.write_all(b"0\r\n\r\n").await);
+                    }
+                    if let Err(error) = sent {
+                        eprintln!("test client disconnected: {error}");
+                    }
+                    if replies.len() > 1 {
+                        replies.pop_front();
+                    }
+                    continue;
+                }
                 let (kind, body) = match answer.raw {
                     Some(raw) => ("application/octet-stream", raw.to_vec()),
                     None => ("application/json", answer.body.to_string().into_bytes()),
@@ -140,12 +176,16 @@ impl Server {
     }
 
     async fn run(&self, args: &[&str]) -> Output {
+        self.run_within(args, Duration::from_secs(20)).await
+    }
+
+    async fn run_within(&self, args: &[&str], limit: Duration) -> Output {
         let mut command = command();
         command
             .args(args)
             .env("ANYWHERE_API", &self.url)
             .env("ANYWHERE_TOKEN", SECRET);
-        tokio::time::timeout(Duration::from_secs(20), command.output())
+        tokio::time::timeout(limit, command.output())
             .await
             .unwrap()
             .unwrap()
@@ -224,7 +264,7 @@ fn assert_contract(request: &str) {
         .collect();
     assert_eq!(
         agents,
-        [control_api::cli_user_agent(env!("CARGO_PKG_VERSION"))],
+        [control_api::cli_user_agent(env!("ANYWHERE_VERSION"))],
         "{head}"
     );
 }
@@ -243,6 +283,7 @@ fn command() -> tokio::process::Command {
         .env_remove("ANYWHERE_API")
         .env_remove("ANYWHERE_TOKEN")
         .env_remove("ANYWHERE_CA")
+        .env_remove("ANYWHERE_PORTAL")
         // `anywhere skill install` writes Claude Code's copy there.
         .env_remove("CLAUDE_CONFIG_DIR")
         .env(

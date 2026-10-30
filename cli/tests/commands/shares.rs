@@ -15,7 +15,7 @@ fn accepted(kind: &str) -> Reply {
 
 fn details() -> Value {
     json!({"app":{"name":"hello","title":"Hello","url":"https://dev-hello.anywhereapps.test",
-        "running":true,"status":"running","restarts":0,"resources":{"size":"medium","disk_gib":10},
+        "running":true,"status":"running","restarts":0,"limits": { "cpu_millicores": 2000, "memory_bytes": 4294967296u64, "disk_bytes": 10737418240u64 },
         "deployed_at":"2026-10-12T00:00:00Z"},"deploys":[]})
 }
 
@@ -283,9 +283,9 @@ async fn makes_someone_a_developer_and_passes_on_the_warning() {
 async fn only_the_owner_shares_so_owner_slash_name_is_refused_before_anything_is_sent() {
     let server = Server::start(vec![reply(json!({}))]).await;
     for args in [
-        &["--json", "shares", "list", "alice/wiki"][..],
-        &["--json", "shares", "add", "alice/wiki", EMAIL],
-        &["--json", "shares", "remove", "alice/wiki", EMAIL],
+        &["--json", "shares", "list", "michael/wiki"][..],
+        &["--json", "shares", "add", "michael/wiki", EMAIL],
+        &["--json", "shares", "remove", "michael/wiki", EMAIL],
     ] {
         let error = failure(&server.run(args).await, "owner_only");
         assert!(
@@ -297,4 +297,30 @@ async fn only_the_owner_shares_so_owner_slash_name_is_refused_before_anything_is
         );
     }
     assert!(server.paths().is_empty());
+}
+
+#[tokio::test]
+async fn reads_and_changes_public_access_and_waits_for_its_operation() {
+    let server = Server::start(vec![reply(json!({"visibility":"restricted"}))]).await;
+    assert_eq!(
+        success(&server.run(&["--json", "apps", "access", "hello"]).await),
+        json!({"visibility":"restricted"})
+    );
+    let server = Server::start(vec![
+        accepted("app_access"),
+        reply(change("app_access", "succeeded")),
+    ])
+    .await;
+    let result = server
+        .run(&["--json", "apps", "access", "hello", "public"])
+        .await;
+    assert_eq!(success(&result)["id"], ID);
+    assert_eq!(
+        server.paths(),
+        [
+            "PUT /v1/apps/hello/access HTTP/1.1".to_owned(),
+            format!("GET /v1/operations/{ID} HTTP/1.1")
+        ]
+    );
+    assert_eq!(server.bodies(), [json!({"visibility":"public"})]);
 }

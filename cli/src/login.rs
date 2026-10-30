@@ -40,11 +40,12 @@ const DEFAULT_API: &str = "https://api.anywhere.so";
 
 pub async fn login(
     api: Option<String>,
+    portal: Option<String>,
     no_browser: bool,
     output: Output,
 ) -> Result<ResultData, CliError> {
     let open = wants_browser(no_browser, output.json, io::stdout().is_terminal());
-    login_with(api, open, &open_browser, output).await
+    login_with(api, portal, open, &open_browser, output).await
 }
 
 /// The API to sign in to, and the setting that named it, for its errors:
@@ -55,6 +56,27 @@ fn which_api(flag: Option<String>, env: Option<String>) -> (String, &'static str
         (None, Some(api)) => (api, "ANYWHERE_API"),
         (None, None) => (DEFAULT_API.to_owned(), "the default API"),
     }
+}
+
+/// The portal a person approves the login in, when one is named, and the
+/// setting that named it: `--portal`, else `ANYWHERE_PORTAL`. Without either,
+/// the approval link is held to the portals the API's own address implies.
+/// `env` is read only without the flag, so a flag overrides a bad setting.
+fn which_portal(
+    flag: Option<String>,
+    env: impl FnOnce() -> Result<Option<String>, CliError>,
+) -> Result<Option<(String, &'static str)>, CliError> {
+    Ok(match flag {
+        Some(portal) => Some((portal, "--portal")),
+        None => env()?.map(|portal| (portal, "ANYWHERE_PORTAL")),
+    })
+}
+
+/// A portal named by a setting, checked: the one origin an approval link may
+/// then be on.
+struct Portal {
+    origin: Url,
+    name: &'static str,
 }
 
 /// Opening the page is a convenience for a person at a terminal. Agents, CI
@@ -90,6 +112,7 @@ fn try_open(open: bool, url: &str, opener: &dyn Fn(&str) -> io::Result<()>, outp
 
 async fn login_with(
     api: Option<String>,
+    portal: Option<String>,
     open: bool,
     opener: &dyn Fn(&str) -> io::Result<()>,
     output: Output,
@@ -102,6 +125,16 @@ async fn login_with(
         )?,
     );
     let anonymous = Anonymous::new(&api, name)?;
+    let portal = which_portal(portal, || {
+        settings::optional(
+            "ANYWHERE_PORTAL",
+            "the portal's origin, such as https://anywhere.so",
+        )
+    })?
+    .map(|(portal, name)| {
+        settings::portal_origin(&portal, name).map(|origin| Portal { origin, name })
+    })
+    .transpose()?;
     // Where the credentials go, before anything is made that needs them.
     let path = credentials::path()?;
     let request = CliLoginRequest {
@@ -115,7 +148,7 @@ async fn login_with(
         client.cli_login_create(&request)
     })
     .await?;
-    check_started(&started, &anonymous.api)?;
+    check_started(&started, &anonymous.api, portal.as_ref())?;
     output.login(
         &started.approve_url,
         &started.user_code,
@@ -186,7 +219,7 @@ async fn login_with(
             Ok(Err(error)) => {
                 let error = api_error(&anonymous.api, error);
                 // The gateway's code for a credential it holds no grant for
-                // (at the API boundary), as this one is until its
+                // (gateway/src/requests/native.rs), as this one is until its
                 // grant arrives.
                 let unknown_yet = matches!(&error,
                     CliError::Api(body) if body.code == "native_authority_denied");
@@ -248,31 +281,26 @@ where
 }
 
 /// Checks the answer before the CLI shows it: a user code of the right shape,
-/// and an approval link to the `/cli-login` page on the portal the API names,
-/// which is the API's own origin, the same with `api.` dropped from its host,
-/// or, for an API at `anywhere-api-<project number>.<region>.run.app`, the same
-/// with `anywhere-portal-` in its place, with exactly `#code=<that user code>`
-/// as its fragment and no query.
-fn check_started(started: &CliLoginStarted, api: &str) -> Result<(), CliError> {
+/// and an approval link to the `/cli-login` page, with exactly
+/// `#code=<that user code>` as its fragment and no query, on the portal: the
+/// one `portal` names when it's set, and otherwise the one the API's address
+/// implies, which is the API's own origin, the same with `api.` dropped from its
+/// host, or, for an API at `anywhere-api-<project number>.<region>.run.app`,
+/// the same with `anywhere-portal-` in its place.
+fn check_started(
+    started: &CliLoginStarted,
+    api: &str,
+    portal: Option<&Portal>,
+) -> Result<(), CliError> {
     let invalid = |what: &str| CliError::BadAnswer {
         detail: format!("the login's {what} isn't one the CLI can show"),
     };
     if !user_code_shaped(&started.user_code) {
         return Err(invalid("user code"));
     }
-    let api = Url::parse(api).map_err(|_| invalid("API address"))?;
+    let api_url = Url::parse(api).map_err(|_| invalid("API address"))?;
     let link = Url::parse(&started.approve_url).map_err(|_| invalid("approval link"))?;
-    let portal = |host: &str| {
-        api.host_str().is_some_and(|api| {
-            api == host
-                || api.strip_prefix("api.") == Some(host)
-                || cloud_run_portal(api).is_some_and(|portal| portal == host)
-        })
-    };
-    if link.scheme() != api.scheme()
-        || !link.host_str().is_some_and(portal)
-        || link.port_or_known_default() != api.port_or_known_default()
-        || !link.username().is_empty()
+    if !link.username().is_empty()
         || link.password().is_some()
         || link.path() != "/cli-login"
         || link.query().is_some()
@@ -280,13 +308,49 @@ fn check_started(started: &CliLoginStarted, api: &str) -> Result<(), CliError> {
     {
         return Err(invalid("approval link"));
     }
-    Ok(())
+    // The link's host is never quoted: the person could be sent anywhere.
+    match portal {
+        Some(portal) if link.origin() != portal.origin.origin() => {
+            let origin = portal.origin.origin().ascii_serialization();
+            Err(CliError::LoginPortalUnexpected {
+                expected: format!("the portal {} names, {origin}", portal.name),
+                fix: format!(
+                    "check that {origin} is the portal of the API at {api}, and set {} to that portal's origin",
+                    portal.name
+                ),
+            })
+        }
+        Some(_) => Ok(()),
+        None if implied_portal(&api_url, &link) => Ok(()),
+        None => Err(CliError::LoginPortalUnexpected {
+            expected: format!(
+                "a portal the API's address implies ({api}, or it with `api.` dropped from its host)"
+            ),
+            fix: "if this platform's portal is on another origin, name it with --portal or ANYWHERE_PORTAL, such as `anywhere login --api https://staging-api.anywhere.so --portal https://staging.anywhere.so`".to_owned(),
+        }),
+    }
+}
+
+/// Whether `link` is on the portal the API's address implies, with the API's
+/// scheme and port.
+fn implied_portal(api: &Url, link: &Url) -> bool {
+    let portal = |host: &str| {
+        api.host_str().is_some_and(|api| {
+            api == host
+                || api.strip_prefix("api.") == Some(host)
+                || cloud_run_portal(api).is_some_and(|portal| portal == host)
+        })
+    };
+    link.scheme() == api.scheme()
+        && link.host_str().is_some_and(portal)
+        && link.port_or_known_default() == api.port_or_known_default()
 }
 
 /// The portal's host beside an API at Cloud Run's deterministic address,
 /// `anywhere-api-<project number>.<region>.run.app`: the same project and
 /// region, with `anywhere-portal-` in place of `anywhere-api-`.
-/// Cloud Run API and portal services must belong to the same project and region.
+/// Staging's front doors are two Cloud Run services until it has its own
+/// domains, which `--portal` names; this goes when they're retired.
 fn cloud_run_portal(api: &str) -> Option<String> {
     let (number, region) = api
         .strip_prefix("anywhere-api-")?
@@ -366,7 +430,7 @@ mod tests {
         assert_eq!(api, "https://api.anywhere.so");
         // Its portal, where the platform's approval link leads.
         let link = "https://anywhere.so/cli-login#code=BCDF-GHJK";
-        assert!(check_started(&started(link, "BCDF-GHJK"), &api).is_ok());
+        assert!(check_started(&started(link, "BCDF-GHJK"), &api, None).is_ok());
     }
 
     #[test]
@@ -428,7 +492,10 @@ mod tests {
                 "http://127.0.0.1:8080",
             ),
         ] {
-            assert!(check_started(&started(link, code), api).is_ok(), "{link}");
+            assert!(
+                check_started(&started(link, code), api, None).is_ok(),
+                "{link}"
+            );
         }
         let api = "https://api.anywhere.test";
         for link in [
@@ -454,12 +521,16 @@ mod tests {
             "https://anywhere.test/other#code=BCDF-GHJK",
             "https://anywhere.test/cli-login/#code=BCDF-GHJK",
         ] {
-            assert!(check_started(&started(link, code), api).is_err(), "{link}");
+            assert!(
+                check_started(&started(link, code), api, None).is_err(),
+                "{link}"
+            );
         }
         assert!(
             check_started(
                 &started("https://anywhere.test/cli-login#code=bcdf", "bcdf"),
-                api
+                api,
+                None
             )
             .is_err()
         );
@@ -473,7 +544,10 @@ mod tests {
             "https://anywhere-portal-123456789012.us-central1.run.app/cli-login#code=BCDF-GHJK",
             "https://anywhere-api-123456789012.us-central1.run.app/cli-login#code=BCDF-GHJK",
         ] {
-            assert!(check_started(&started(link, code), api).is_ok(), "{link}");
+            assert!(
+                check_started(&started(link, code), api, None).is_ok(),
+                "{link}"
+            );
         }
         // Hosts are compared as `Url::parse` lowercases them.
         assert!(
@@ -482,7 +556,8 @@ mod tests {
                     "https://ANYWHERE-PORTAL-1.US-CENTRAL1.RUN.APP/cli-login#code=BCDF-GHJK",
                     code
                 ),
-                "https://ANYWHERE-API-1.US-CENTRAL1.RUN.APP"
+                "https://ANYWHERE-API-1.US-CENTRAL1.RUN.APP",
+                None
             )
             .is_ok()
         );
@@ -507,7 +582,10 @@ mod tests {
             "https://anywhere-portal-123456789012.us-central1.run.app/other#code=BCDF-GHJK",
             "https://anywhere-portal-123456789012.us-central1.run.app/cli-login?x=1#code=BCDF-GHJK",
         ] {
-            assert!(check_started(&started(link, code), api).is_err(), "{link}");
+            assert!(
+                check_started(&started(link, code), api, None).is_err(),
+                "{link}"
+            );
         }
         // Only an API on Cloud Run's deterministic address has a sibling portal.
         let link = "https://anywhere-portal-1.us-central1.run.app/cli-login#code=BCDF-GHJK";
@@ -520,7 +598,176 @@ mod tests {
             "https://anywhere-api-1.us-central1.run.app.evil.test",
             "https://anywhere-api-1.us-central1.run.app.",
         ] {
-            assert!(check_started(&started(link, code), api).is_err(), "{api}");
+            assert!(
+                check_started(&started(link, code), api, None).is_err(),
+                "{api}"
+            );
+        }
+    }
+
+    fn portal(origin: &str) -> Portal {
+        Portal {
+            origin: settings::portal_origin(origin, "--portal").unwrap(),
+            name: "--portal",
+        }
+    }
+
+    #[test]
+    fn a_portal_is_named_by_portal_then_anywhere_portal_and_otherwise_implied() {
+        let flag = || Some("https://flag.test".to_owned());
+        let env = || Ok(Some("https://env.test".to_owned()));
+        assert_eq!(
+            which_portal(flag(), env).unwrap(),
+            Some(("https://flag.test".to_owned(), "--portal"))
+        );
+        assert_eq!(
+            which_portal(None, env).unwrap(),
+            Some(("https://env.test".to_owned(), "ANYWHERE_PORTAL"))
+        );
+        assert_eq!(which_portal(None, || Ok(None)).unwrap(), None);
+        // A bad ANYWHERE_PORTAL, such as an empty one, matters only without
+        // the flag, which isn't read at all beside it.
+        let bad = || {
+            Err(CliError::SettingInvalid {
+                name: "ANYWHERE_PORTAL",
+                problem: "is empty".to_owned(),
+            })
+        };
+        assert_eq!(
+            which_portal(flag(), bad).unwrap(),
+            Some(("https://flag.test".to_owned(), "--portal"))
+        );
+        assert_eq!(
+            which_portal(None, bad).unwrap_err().code(),
+            "setting_invalid"
+        );
+    }
+
+    #[test]
+    fn a_portal_is_a_canonical_origin_and_plain_http_only_on_loopback() {
+        for origin in [
+            "https://staging.anywhere.so",
+            "https://staging.anywhere.so/",
+            "https://anywhere.localhost:8443",
+            "https://portal.test",
+            "http://127.0.0.1:8080",
+            "http://localhost:3000",
+            "http://[::1]:3000",
+        ] {
+            assert!(
+                settings::portal_origin(origin, "--portal").is_ok(),
+                "{origin}"
+            );
+        }
+        for origin in [
+            "",
+            "staging.anywhere.so",
+            "http://staging.anywhere.so",
+            "http://anywhere.localhost",
+            "http://portal.test",
+            "ftp://staging.anywhere.so",
+            "javascript:alert(1)",
+            "https://STAGING.anywhere.so",
+            "https://staging.anywhere.so:443",
+            "https://staging.anywhere.so/cli-login",
+            "https://staging.anywhere.so?x=1",
+            "https://staging.anywhere.so#x",
+            "https://user@staging.anywhere.so",
+            "https://user:pass@staging.anywhere.so",
+            " https://staging.anywhere.so",
+        ] {
+            let error = settings::portal_origin(origin, "ANYWHERE_PORTAL").unwrap_err();
+            assert_eq!(error.code(), "setting_invalid", "{origin}");
+            assert!(
+                error
+                    .to_string()
+                    .starts_with("ANYWHERE_PORTAL must be the portal's"),
+                "{origin}: {error}"
+            );
+        }
+    }
+
+    #[test]
+    fn with_a_portal_named_only_links_on_exactly_its_origin_are_shown() {
+        let code = "BCDF-GHJK";
+        let api = "https://staging-api.anywhere.so";
+        let staging = portal("https://staging.anywhere.so");
+        let link = "https://staging.anywhere.so/cli-login#code=BCDF-GHJK";
+        assert!(check_started(&started(link, code), api, Some(&staging)).is_ok());
+        // Without it, staging's API implies no portal there.
+        let error = check_started(&started(link, code), api, None).unwrap_err();
+        assert_eq!(error.code(), "login_portal_unexpected");
+        assert!(
+            error
+                .to_string()
+                .contains("--portal https://staging.anywhere.so")
+        );
+        assert!(!error.is_temporary());
+        // A local portal on its own port.
+        let local = portal("http://127.0.0.1:5173");
+        assert!(
+            check_started(
+                &started("http://127.0.0.1:5173/cli-login#code=BCDF-GHJK", code),
+                "http://127.0.0.1:8080",
+                Some(&local)
+            )
+            .is_ok()
+        );
+
+        for (link, api) in [
+            // What the API's own address implies, which the named portal replaces.
+            (
+                "https://staging-api.anywhere.so/cli-login#code=BCDF-GHJK",
+                api,
+            ),
+            (
+                "https://anywhere.test/cli-login#code=BCDF-GHJK",
+                "https://api.anywhere.test",
+            ),
+            (
+                "https://anywhere.test/cli-login#code=BCDF-GHJK",
+                "https://anywhere.test",
+            ),
+            (
+                "https://anywhere-portal-1.us-central1.run.app/cli-login#code=BCDF-GHJK",
+                "https://anywhere-api-1.us-central1.run.app",
+            ),
+            // Another host, scheme or port than the portal's.
+            ("https://evil.test/cli-login#code=BCDF-GHJK", api),
+            (
+                "https://x.staging.anywhere.so/cli-login#code=BCDF-GHJK",
+                api,
+            ),
+            (
+                "https://staging.anywhere.so.evil.test/cli-login#code=BCDF-GHJK",
+                api,
+            ),
+            ("https://staging.anywhere.so./cli-login#code=BCDF-GHJK", api),
+            ("http://staging.anywhere.so/cli-login#code=BCDF-GHJK", api),
+            (
+                "https://staging.anywhere.so:8443/cli-login#code=BCDF-GHJK",
+                api,
+            ),
+        ] {
+            let error = check_started(&started(link, code), api, Some(&staging)).unwrap_err();
+            assert_eq!(error.code(), "login_portal_unexpected", "{link}");
+            let message = error.to_string();
+            assert!(
+                message.contains("the portal --portal names, https://staging.anywhere.so"),
+                "{message}"
+            );
+            assert!(!message.contains("evil.test"), "{message}");
+        }
+        // The page, its code and the rest are checked as before.
+        for link in [
+            "https://staging.anywhere.so/cli-login",
+            "https://staging.anywhere.so/cli-login#code=BCDF-GHJL",
+            "https://staging.anywhere.so/other#code=BCDF-GHJK",
+            "https://staging.anywhere.so/cli-login?x=1#code=BCDF-GHJK",
+            "https://user@staging.anywhere.so/cli-login#code=BCDF-GHJK",
+        ] {
+            let error = check_started(&started(link, code), api, Some(&staging)).unwrap_err();
+            assert_eq!(error.code(), "api_answer_invalid", "{link}");
         }
     }
 

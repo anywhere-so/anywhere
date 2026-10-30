@@ -2,6 +2,138 @@ use super::*;
 
 const VALUE: &str = "sk-test-not-a-real-key\n";
 
+/// OpenSEO's Compose `environment:`, as a dotenv file.
+const ENV_FILE: &str = "# OpenSEO\nDATAFORSEO_API_KEY=sk-test-not-a-real-key\nCLOUDFLARE_INCLUDE_PROCESS_ENV=true\n\nAUTH_MODE=local_noauth\nALLOWED_HOST=dev-open-seo.anywhereapp.test\nVITE_SHOW_DEVTOOLS=false\n";
+
+#[tokio::test]
+async fn sets_every_secret_in_an_env_file_in_one_change() {
+    let dir = tempfile::tempdir().unwrap();
+    std::fs::write(dir.path().join(".env"), ENV_FILE).unwrap();
+    let server = Server::start(vec![
+        accepted("secret_set"),
+        reply(change("secret_set", "succeeded")),
+    ])
+    .await;
+    let args = [
+        "--json",
+        "secrets",
+        "set",
+        "--env-file",
+        ".env",
+        "--app",
+        "open-seo",
+    ];
+    let output = server.run_piped(dir.path(), &args, b"").await;
+    assert_eq!(success(&output)["state"], "succeeded");
+    assert_eq!(
+        server.paths(),
+        [
+            "PATCH /v1/apps/open-seo/secrets HTTP/1.1".to_owned(),
+            format!("GET /v1/operations/{ID} HTTP/1.1"),
+        ]
+    );
+    assert_eq!(
+        server.bodies(),
+        [json!({"create_app": false, "secrets": [
+            {"name": "DATAFORSEO_API_KEY", "value": "sk-test-not-a-real-key"},
+            {"name": "CLOUDFLARE_INCLUDE_PROCESS_ENV", "value": "true"},
+            {"name": "AUTH_MODE", "value": "local_noauth"},
+            {"name": "ALLOWED_HOST", "value": "dev-open-seo.anywhereapp.test"},
+            {"name": "VITE_SHOW_DEVTOOLS", "value": "false"},
+        ]})]
+    );
+    let shown = format!("{}{}", text(&output.stdout), text(&output.stderr));
+    assert!(shown.contains("DATAFORSEO_API_KEY"), "{shown}");
+    assert!(!shown.contains("sk-test-not-a-real-key"), "{shown}");
+}
+
+#[tokio::test]
+async fn a_bad_env_file_sends_nothing_and_names_its_line_but_no_value() {
+    let dir = tempfile::tempdir().unwrap();
+    std::fs::write(
+        dir.path().join(".env"),
+        "API_KEY=sk-test-not-a-real-key\nsk-test-not-a-real-key\n",
+    )
+    .unwrap();
+    let server = Server::start(vec![accepted("secret_set")]).await;
+    let output = server
+        .run_piped(
+            dir.path(),
+            &[
+                "--json",
+                "secrets",
+                "set",
+                "--env-file",
+                ".env",
+                "--app",
+                "a",
+            ],
+            b"",
+        )
+        .await;
+    let error = failure(&output, "env_file_invalid");
+    let message = error["message"].as_str().unwrap();
+    assert!(message.contains("line 2: "), "{message}");
+    assert!(message.contains("nothing was set"), "{message}");
+    assert!(!text(&output.stderr).contains("sk-test"), "{message}");
+    assert!(server.paths().is_empty());
+
+    for args in [
+        vec!["--json", "secrets", "set", "--env-file", ".env", "API_KEY"],
+        vec!["--json", "secrets", "set"],
+    ] {
+        let output = server.run_piped(dir.path(), &args, b"").await;
+        failure(&output, "argument_invalid");
+    }
+    let missing = server
+        .run_piped(
+            dir.path(),
+            &[
+                "--json",
+                "secrets",
+                "set",
+                "--env-file",
+                "nope.env",
+                "--app",
+                "a",
+            ],
+            b"",
+        )
+        .await;
+    failure(&missing, "env_file_unreadable");
+    assert!(server.paths().is_empty());
+}
+
+#[tokio::test]
+async fn a_refused_env_file_change_says_nothing_was_set() {
+    let dir = tempfile::tempdir().unwrap();
+    std::fs::write(dir.path().join(".env"), ENV_FILE).unwrap();
+    let server = Server::start(vec![Reply {
+        status: 400,
+        ..reply(json!({"code": "too_many_secrets",
+            "message": "AUTH_MODE: the app already has 100 secrets", "retryable": false}))
+    }])
+    .await;
+    let output = server
+        .run_piped(
+            dir.path(),
+            &[
+                "--json",
+                "secrets",
+                "set",
+                "--env-file",
+                ".env",
+                "--app",
+                "a",
+            ],
+            b"",
+        )
+        .await;
+    let error = failure(&output, "too_many_secrets");
+    assert_eq!(error["retryable"], false);
+    assert_eq!(server.paths().len(), 1, "never retried");
+}
+
 fn change(kind: &str, state: &str) -> Value {
     json!({"id": ID, "kind": kind, "state": state, "upload": null, "url": null, "error": null})
 }
@@ -428,11 +560,18 @@ async fn a_developer_names_the_app_with_its_owner_and_never_makes_it() {
         reply(change("secret_set", "succeeded")),
     ])
     .await;
-    let args = ["--json", "secrets", "set", "API_KEY", "--app", "alice/wiki"];
+    let args = [
+        "--json",
+        "secrets",
+        "set",
+        "API_KEY",
+        "--app",
+        "michael/wiki",
+    ];
     success(&server.run_piped(here(), &args, VALUE.as_bytes()).await);
     assert_eq!(
         server.paths()[0],
-        "PUT /v1/apps/wiki/secrets/API_KEY?owner=alice HTTP/1.1"
+        "PUT /v1/apps/wiki/secrets/API_KEY?owner=michael HTTP/1.1"
     );
     assert_eq!(
         server.bodies(),
@@ -450,31 +589,38 @@ async fn a_developer_names_the_app_with_its_owner_and_never_makes_it() {
         "unset",
         "API_KEY",
         "--app",
-        "alice/wiki",
+        "michael/wiki",
     ];
     success(&server.run_piped(here(), &args, b"").await);
     assert_eq!(
         server.paths()[0],
-        "DELETE /v1/apps/wiki/secrets/API_KEY?owner=alice HTTP/1.1"
+        "DELETE /v1/apps/wiki/secrets/API_KEY?owner=michael HTTP/1.1"
     );
 
     let server = Server::start(vec![reply(json!({"names": ["API_KEY"]}))]).await;
-    let args = ["--json", "secrets", "list", "--app", "alice/wiki"];
+    let args = ["--json", "secrets", "list", "--app", "michael/wiki"];
     success(&server.run_piped(here(), &args, b"").await);
     assert_eq!(
         server.paths(),
-        ["GET /v1/apps/wiki/secrets?owner=alice HTTP/1.1"]
+        ["GET /v1/apps/wiki/secrets?owner=michael HTTP/1.1"]
     );
 
     // A member's change is refused, and not sent again.
     let server = Server::start(vec![Reply {
         status: 403,
         ..reply(json!({"code": "member_only",
-            "message": "alice made you a member of wiki, to use it but not change it; ask them to make you a developer",
+            "message": "michael made you a member of wiki, to use it but not change it; ask them to make you a developer",
             "retryable": false}))
     }])
     .await;
-    let args = ["--json", "secrets", "set", "API_KEY", "--app", "alice/wiki"];
+    let args = [
+        "--json",
+        "secrets",
+        "set",
+        "API_KEY",
+        "--app",
+        "michael/wiki",
+    ];
     let error = failure(
         &server.run_piped(here(), &args, VALUE.as_bytes()).await,
         "member_only",

@@ -13,15 +13,26 @@
 //!
 //! An app may also have a build step, `build`, which runs in `/app` on the
 //! app's own disk at every deploy, once the deploy's files are written.
-//! Unknown fields are refused.
+//!
+//! An image app names a public container image, `image`, instead of deploying
+//! a folder's files: each deploy pulls it onto the app's disk, and the app runs
+//! the image's own command, or its one `web` or `worker` command in the image's
+//! place, with no build and no static site. With neither command it's a web
+//! app. A web app that takes long to start listening, such as one that builds
+//! itself when it first starts, can give `start_timeout`.
+//! Expiry comes with M4, so until then `app.toml` refuses it as unknown.
+
+pub mod icon;
 
 use std::fmt;
 
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
-mod resources;
-pub use resources::{Resources, Size};
+pub mod image;
+mod limits;
+pub use image::{ImageRef, ImageRefError};
+pub use limits::{LimitRequests, Limits, disk_limit_value, parse_bytes, parse_cpu};
 
 /// The largest `app.toml` read, so a huge file can't use up memory.
 pub const MAX_FILE_LEN: usize = 64 * 1024;
@@ -36,15 +47,25 @@ pub const MAX_COMMAND_LEN: usize = 4096;
 /// may take as its own `port`.
 pub const EXEC_PORT: u16 = 7682;
 
+/// How long a web app gets to start listening, in seconds, unless its
+/// `start_timeout` says otherwise.
+pub const DEFAULT_START_TIMEOUT: u32 = 30;
+
+/// The longest `start_timeout`, in seconds, as long as a deploy may take.
+pub const MAX_START_TIMEOUT: u32 = 1200;
+
 /// What an app is, as its `app.toml` says.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct AppSpec {
     /// Shown on the home screen. The app's address comes from its folder's name.
     pub title: String,
-    /// CPU, memory and persistent disk for builds, the app and exec commands.
-    #[serde(default, skip_serializing_if = "Resources::is_default")]
-    pub resources: Resources,
+    /// Optional CPU, memory and disk caps; a deploy fills omitted values from the plan ceilings.
+    #[serde(default, skip_serializing_if = "LimitRequests::is_empty")]
+    pub limits: LimitRequests,
+    /// PNG file relative to the app folder, included in the deploy.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub icon: Option<String>,
     /// The app's one command. A static site has none, and leaves this out.
     #[serde(default, skip_serializing_if = "Processes::is_empty")]
     pub processes: Processes,
@@ -61,6 +82,17 @@ pub struct AppSpec {
     /// platform's helper serves them at the app's address, as a web app.
     #[serde(default, rename = "static", skip_serializing_if = "Option::is_none")]
     pub static_folder: Option<String>,
+    /// For an image app, the public container image each deploy pulls onto the
+    /// app's disk, such as `ghcr.io/every-app/open-seo:latest`, in place of a
+    /// folder's files. It runs the image's own command unless `[processes]`
+    /// gives one.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub image: Option<String>,
+    /// How many seconds a web app gets to start listening on its port, from 1
+    /// to 1200, whenever a deploy or a secret change starts it: 30 if it's
+    /// left out. Restarts after a crash wait for nothing.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub start_timeout: Option<u32>,
 }
 
 /// The app's one command: `web` or `worker`, never both, or neither for a
@@ -140,6 +172,10 @@ pub enum SpecError {
     Invalid { message: String },
     #[error("the title is empty; give the app one, such as title = \"My app\"")]
     EmptyTitle,
+    #[error(
+        "icon must name a .png file inside the app folder that is included in the deploy; {reason}"
+    )]
+    BadIcon { reason: String },
     #[error("the title is {len} characters long; shorten it to at most {MAX_TITLE_LEN}")]
     TitleTooLong { len: usize },
     #[error("the title has a control character at character {at}; use plain text")]
@@ -199,19 +235,36 @@ pub enum SpecError {
     BuildTooLong { len: usize },
     #[error("build has a NUL byte, which no command can contain; remove it")]
     BuildHasNul,
+    #[error("limits.{limit} {reason}")]
+    InvalidLimit { limit: String, reason: String },
+    #[error("{0}")]
+    Image(#[from] ImageRefError),
     #[error(
-        "resources.disk_gib must be a positive whole number of GiB that fits in a signed 64-bit byte quota"
+        "static is set beside image, but an image app runs the image's own files; remove static, and serve the files from the image"
     )]
-    InvalidDisk,
+    ImageWithStatic,
+    #[error(
+        "build is set beside image, but an image app has no build step; build what it needs into the image, or run it with `anywhere exec` once it's deployed"
+    )]
+    ImageWithBuild,
+    #[error(
+        "start_timeout is {seconds}; give the seconds the app needs to start listening, from 1 to {MAX_START_TIMEOUT}"
+    )]
+    BadStartTimeout { seconds: u32 },
+    #[error(
+        "start_timeout is set, but only a web app waits to start listening; remove start_timeout"
+    )]
+    StartTimeoutWithoutWeb,
 }
 
 impl SpecError {
     /// A stable code for the error, which callers can match on.
     pub fn code(&self) -> &'static str {
         match self {
+            SpecError::BadIcon { .. } => "app_icon_invalid",
             SpecError::TooLarge { .. } => "app_toml_too_large",
             SpecError::Invalid { .. } => "app_toml_invalid",
-            SpecError::InvalidDisk => "app_resources_invalid",
+            SpecError::InvalidLimit { .. } => "app_limits_invalid",
             SpecError::EmptyTitle
             | SpecError::TitleTooLong { .. }
             | SpecError::TitleHasControl { .. } => "app_title_invalid",
@@ -230,10 +283,51 @@ impl SpecError {
             SpecError::BadStatic { .. }
             | SpecError::StaticLeftOut { .. }
             | SpecError::StaticWithProcesses => "app_static_invalid",
-            SpecError::EmptyBuild | SpecError::BuildTooLong { .. } | SpecError::BuildHasNul => {
-                "app_build_invalid"
+            SpecError::EmptyBuild
+            | SpecError::BuildTooLong { .. }
+            | SpecError::BuildHasNul
+            | SpecError::ImageWithBuild => "app_build_invalid",
+            SpecError::Image(_) | SpecError::ImageWithStatic => "app_image_invalid",
+            SpecError::BadStartTimeout { .. } | SpecError::StartTimeoutWithoutWeb => {
+                "app_start_timeout_invalid"
             }
         }
+    }
+}
+
+/// The refusal of a `[resources]` table, which `[limits]` replaced, naming
+/// the `[limits]` that keep what it asked for, so an agent can fix the file
+/// in one step.
+fn resources_replaced(resources: &toml::Value) -> String {
+    // What each size gave before `[limits]`: shared vCPUs and memory.
+    let size = match resources.get("size").and_then(toml::Value::as_str) {
+        None => None,
+        Some("small") => Some(("1", "2 GiB")),
+        Some("medium") => Some(("2", "4 GiB")),
+        Some("large") => Some(("4", "8 GiB")),
+        Some("xl") => Some(("8", "16 GiB")),
+        Some(_) => None,
+    };
+    let disk = resources
+        .get("disk_gib")
+        .and_then(toml::Value::as_integer)
+        // Only what `[limits]` takes as bytes, so the advice parses.
+        .filter(|gib| *gib > 0 && *gib <= i64::MAX >> 30);
+    let mut keep = Vec::new();
+    if let Some((cpu, memory)) = size {
+        keep.push(format!("cpu = {cpu}"));
+        keep.push(format!("memory = \"{memory}\""));
+    }
+    if let Some(gib) = disk {
+        keep.push(format!("disk = \"{gib} GiB\""));
+    }
+    if keep.is_empty() {
+        "[resources] was replaced by [limits]: remove it to take the plan's ceilings, or write [limits] with any of cpu, memory and disk, such as cpu = 1 and memory = \"2 GiB\"".to_owned()
+    } else {
+        format!(
+            "[resources] was replaced by [limits]: remove it to take the plan's ceilings, or, to keep what it asked for, write [limits] with {}",
+            keep.join(", ")
+        )
     }
 }
 
@@ -243,18 +337,47 @@ pub fn parse(text: &str) -> Result<AppSpec, SpecError> {
     if text.len() > MAX_FILE_LEN {
         return Err(SpecError::TooLarge { len: text.len() });
     }
-    let spec: AppSpec = toml::from_str(text).map_err(|e| SpecError::Invalid {
-        message: e.to_string().trim().to_owned(),
-    })?;
+    let mut value: toml::Value = toml::from_str(text).map_err(invalid_toml)?;
+    if let Some(table) = value.as_table_mut() {
+        if let Some(resources) = table.get("resources") {
+            return Err(SpecError::Invalid {
+                message: resources_replaced(resources),
+            });
+        }
+        if let Some(raw) = table.remove("limits") {
+            let limits: limits::TomlLimits = raw.try_into().map_err(invalid_toml)?;
+            table.insert(
+                "limits".to_owned(),
+                toml::Value::try_from(limits.requests()?).map_err(invalid_toml)?,
+            );
+        }
+    }
+    let spec: AppSpec = value.try_into().map_err(invalid_toml)?;
     spec.check()?;
     Ok(spec)
+}
+
+fn invalid_toml(error: impl std::fmt::Display) -> SpecError {
+    SpecError::Invalid {
+        message: error.to_string().trim().to_owned(),
+    }
 }
 
 impl AppSpec {
     /// Checks every field. The control plane calls this on each `AppSpec` it's
     /// given, because the parser that made it ran outside our trust.
     pub fn check(&self) -> Result<(), SpecError> {
-        self.resources.check()?;
+        self.limits.check()?;
+        if let Some(icon) = &self.icon {
+            manifest::check_path(icon).map_err(|error| SpecError::BadIcon {
+                reason: error.to_string(),
+            })?;
+            if !icon.ends_with(".png") {
+                return Err(SpecError::BadIcon {
+                    reason: "use a PNG file, such as assets/icon.png".to_owned(),
+                });
+            }
+        }
         if self.title.trim().is_empty() {
             return Err(SpecError::EmptyTitle);
         }
@@ -266,7 +389,22 @@ impl AppSpec {
             return Err(SpecError::TitleHasControl { at: index + 1 });
         }
 
-        if let Some(folder) = &self.static_folder {
+        if let Some(image) = &self.image {
+            ImageRef::parse(image)?;
+            if self.static_folder.is_some() {
+                return Err(SpecError::ImageWithStatic);
+            }
+            if self.build.is_some() {
+                return Err(SpecError::ImageWithBuild);
+            }
+            if !self.processes.is_empty() {
+                self.check_command()?;
+            } else if self.port == Some(0) {
+                return Err(SpecError::ZeroPort);
+            } else if self.port == Some(EXEC_PORT) {
+                return Err(SpecError::ReservedPort { port: EXEC_PORT });
+            }
+        } else if let Some(folder) = &self.static_folder {
             check_static(folder)?;
             if !self.processes.is_empty() {
                 return Err(SpecError::StaticWithProcesses);
@@ -281,6 +419,14 @@ impl AppSpec {
         if let Some(build) = &self.build {
             check_build(build)?;
         }
+        if let Some(seconds) = self.start_timeout {
+            if self.kind()? != Kind::Web {
+                return Err(SpecError::StartTimeoutWithoutWeb);
+            }
+            if seconds == 0 || seconds > MAX_START_TIMEOUT {
+                return Err(SpecError::BadStartTimeout { seconds });
+            }
+        }
         Ok(())
     }
 }
@@ -292,7 +438,21 @@ impl AppSpec {
         if self.static_folder.is_some() {
             return Ok(Kind::Static);
         }
+        if self.image.is_some() && self.processes.is_empty() {
+            return Ok(Kind::Web);
+        }
         Ok(self.processes.command()?.0)
+    }
+
+    /// The image an image app pulls, read from `image`; `None` for any other
+    /// app.
+    pub fn image_ref(&self) -> Result<Option<ImageRef>, SpecError> {
+        Ok(self.image.as_deref().map(ImageRef::parse).transpose()?)
+    }
+
+    /// How long the app gets to start listening after it starts.
+    pub fn start_timeout(&self) -> u32 {
+        self.start_timeout.unwrap_or(DEFAULT_START_TIMEOUT)
     }
 
     /// The site's files' paths start with this, `static`'s folder and a `/`,
@@ -378,12 +538,46 @@ worker = "node worker.js"
 "#;
 
     #[test]
+    fn a_resources_table_is_refused_naming_the_limits_that_keep_it() {
+        let refused = |resources: &str| match parse(&format!("{HELLO}\n[resources]\n{resources}\n"))
+        {
+            Err(SpecError::Invalid { message }) => message,
+            other => panic!("expected a refusal, got {other:?}"),
+        };
+        for (size, cpu, memory) in [
+            ("small", 1, "2 GiB"),
+            ("medium", 2, "4 GiB"),
+            ("large", 4, "8 GiB"),
+            ("xl", 8, "16 GiB"),
+        ] {
+            let advice = refused(&format!("size = \"{size}\""));
+            assert!(
+                advice.ends_with(&format!(
+                    "write [limits] with cpu = {cpu}, memory = \"{memory}\""
+                )),
+                "{advice}"
+            );
+        }
+        let too_big = refused(&format!("disk_gib = {}", i64::MAX));
+        assert!(too_big.contains("such as cpu = 1"), "{too_big}");
+        assert!(
+            refused("size = \"small\"\ndisk_gib = 20")
+                .ends_with("write [limits] with cpu = 1, memory = \"2 GiB\", disk = \"20 GiB\""),
+        );
+        assert!(refused("disk_gib = 30").ends_with("write [limits] with disk = \"30 GiB\""));
+        let unknown = refused("size = \"huge\"");
+        assert!(unknown.contains("such as cpu = 1"), "{unknown}");
+        assert!(unknown.starts_with("[resources] was replaced by [limits]"));
+    }
+
+    #[test]
     fn reads_a_web_app() {
         let spec = parse(HELLO).unwrap();
         assert_eq!(
             spec,
             AppSpec {
-                resources: Resources::default(),
+                limits: LimitRequests::default(),
+                icon: None,
                 title: "Hello".to_owned(),
                 processes: Processes {
                     web: Some("python3 -m http.server $PORT".to_owned()),
@@ -392,6 +586,8 @@ worker = "node worker.js"
                 port: None,
                 build: None,
                 static_folder: None,
+                image: None,
+                start_timeout: None,
             }
         );
         assert_eq!(
@@ -409,7 +605,8 @@ worker = "node worker.js"
         assert_eq!(
             spec,
             AppSpec {
-                resources: Resources::default(),
+                limits: LimitRequests::default(),
+                icon: None,
                 title: "Ticker".to_owned(),
                 processes: Processes {
                     web: None,
@@ -418,6 +615,8 @@ worker = "node worker.js"
                 port: None,
                 build: None,
                 static_folder: None,
+                image: None,
+                start_timeout: None,
             }
         );
         assert_eq!(
@@ -524,7 +723,8 @@ worker = "node worker.js"
     fn checks_every_field() {
         let spec =
             |title: &str, web: Option<&str>, worker: Option<&str>, port: Option<u16>| AppSpec {
-                resources: Resources::default(),
+                limits: LimitRequests::default(),
+                icon: None,
                 title: title.to_owned(),
                 processes: Processes {
                     web: web.map(str::to_owned),
@@ -533,6 +733,8 @@ worker = "node worker.js"
                 port,
                 build: None,
                 static_folder: None,
+                image: None,
+                start_timeout: None,
             };
         let web = |title: &str, command: &str, port| spec(title, Some(command), None, port);
         let worker = |command: &str, port| spec("Hi", None, Some(command), port);
@@ -626,6 +828,91 @@ worker = "node worker.js"
             r#"{"title":"Ticker","processes":{"worker":"node worker.js"}}"#
         );
         assert_eq!(serde_json::from_str::<AppSpec>(&json).unwrap(), spec);
+    }
+
+    const OPEN_SEO: &str = r#"
+title = "OpenSEO"
+image = "ghcr.io/every-app/open-seo:latest"
+port = 3001
+start_timeout = 900
+"#;
+
+    #[test]
+    fn an_image_app_runs_the_images_command_as_a_web_app() {
+        let spec = parse(OPEN_SEO).unwrap();
+        assert_eq!(spec.kind().unwrap(), Kind::Web);
+        assert!(spec.processes.is_empty());
+        assert_eq!(spec.start_timeout(), 900);
+        let image = spec.image_ref().unwrap().unwrap();
+        assert_eq!(image.to_string(), "ghcr.io/every-app/open-seo:latest");
+        assert_eq!(parse(HELLO).unwrap().image_ref().unwrap(), None);
+        assert_eq!(parse(HELLO).unwrap().start_timeout(), DEFAULT_START_TIMEOUT);
+    }
+
+    #[test]
+    fn an_image_app_may_run_its_own_command_in_the_images_place() {
+        let spec = parse(
+            "title = \"Box\"\nimage = \"alpine:3\"\n[processes]\nworker = \"sleep infinity\"\n",
+        )
+        .unwrap();
+        assert_eq!(spec.kind().unwrap(), Kind::Worker);
+        let spec = parse(
+            "title = \"Box\"\nimage = \"alpine:3\"\n[processes]\nweb = \"httpd -f -p $PORT\"\n",
+        )
+        .unwrap();
+        assert_eq!(spec.kind().unwrap(), Kind::Web);
+    }
+
+    #[test]
+    fn an_image_app_has_no_build_or_static_site() {
+        let refused = |text: &str| parse(text).unwrap_err();
+        assert_eq!(
+            refused("title = \"A\"\nimage = \"nginx\"\nbuild = \"make\"\n"),
+            SpecError::ImageWithBuild
+        );
+        assert_eq!(
+            refused("title = \"A\"\nimage = \"nginx\"\nstatic = \"public\"\n"),
+            SpecError::ImageWithStatic
+        );
+        assert_eq!(
+            refused("title = \"A\"\nimage = \"nginx\"\nport = 7682\n"),
+            SpecError::ReservedPort { port: EXEC_PORT }
+        );
+        assert_eq!(
+            refused("title = \"A\"\nimage = \"Nginx\"\n").code(),
+            "app_image_invalid"
+        );
+        assert_eq!(
+            refused("title = \"A\"\nimage = \"localhost:5000/a\"\n").code(),
+            "app_image_invalid"
+        );
+    }
+
+    #[test]
+    fn start_timeout_is_a_web_apps_and_bounded() {
+        let refused = |text: &str| parse(text).unwrap_err();
+        assert_eq!(
+            refused(&format!("start_timeout = 0\n{HELLO}")),
+            SpecError::BadStartTimeout { seconds: 0 }
+        );
+        assert_eq!(
+            refused(&format!("start_timeout = 1201\n{HELLO}")),
+            SpecError::BadStartTimeout { seconds: 1201 }
+        );
+        assert_eq!(
+            refused(&format!("start_timeout = 60\n{TICKER}")),
+            SpecError::StartTimeoutWithoutWeb
+        );
+        assert_eq!(
+            refused("title = \"S\"\nstatic = \"public\"\nstart_timeout = 60\n"),
+            SpecError::StartTimeoutWithoutWeb
+        );
+        assert_eq!(
+            parse(&format!("start_timeout = 1200\n{HELLO}"))
+                .unwrap()
+                .start_timeout(),
+            1200
+        );
     }
 
     #[test]

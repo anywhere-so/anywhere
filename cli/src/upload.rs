@@ -17,7 +17,7 @@ use manifest::{MAX_BATCH_SIZE, Missing, UploadError};
 use tokio::sync::mpsc;
 use tokio::time::Instant;
 
-use crate::api::types::Upload;
+use crate::api::types::{ErrorBody, Upload};
 use crate::app::App;
 use crate::error::{CliError, chain};
 use crate::output::Output;
@@ -186,9 +186,13 @@ async fn read_answer(mut response: reqwest::Response) -> Result<Answer, CliError
                 (_, missing) => Ok(Answer::Missing(missing)),
             }
         }
-        _ => match serde_json::from_slice::<UploadError>(&body) {
+        _ => match serde_json::from_slice::<ErrorBody>(&body) {
             Ok(error) if status.is_client_error() || status.is_server_error() => {
-                Err(CliError::UploadRefused(error))
+                Err(CliError::UploadRefused(UploadError {
+                    code: error.code,
+                    message: error.message,
+                    retryable: error.retryable,
+                }))
             }
             _ => Err(unclear(quote(&body))),
         },

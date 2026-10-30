@@ -11,9 +11,12 @@ cargo-fuzz = true
 arbitrary = { version = "1.4.2", features = ["derive"] }
 libfuzzer-sys = "0.4.13"
 tempfile = "3.27.0"
+control-api = { package = "anywhere-api-types", path = "../crates/control-api" }
 appspec = { path = "../crates/appspec" }
 manifest = { path = "../crates/manifest" }
 naming = { path = "../crates/naming" }
+uuid = { version = "1.28.0", features = ["v7"] }
+serde = { version = "1.0.229", features = ["derive"] }
 serde_json = "1.0.152"
 toml = "1.1.8"
 tar = { version = "0.4.46", default-features = false }
@@ -49,6 +52,34 @@ bench = false
 [[bin]]
 name = "pull_untar"
 path = "fuzz_targets/pull_untar.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "app_icon"
+path = "fuzz_targets/app_icon.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "image_reference"
+path = "fuzz_targets/image_reference.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "logs_follow"
+path = "fuzz_targets/logs_follow.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "public_apps"
+path = "fuzz_targets/public_apps.rs"
 test = false
 doc = false
 bench = false

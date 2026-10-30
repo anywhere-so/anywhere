@@ -20,8 +20,12 @@ pub struct App {
     pub spec: AppSpec,
     /// The folder, as it was given.
     pub dir: PathBuf,
-    /// Every file the deploy sends, sorted by path.
+    /// Every file the deploy sends, sorted by path: none for an image app,
+    /// whose files come from its image.
     pub files: Vec<FileEntry>,
+    /// For an image app, whether its folder holds files besides `app.toml`
+    /// that a folder's deploy would send, which its deploy doesn't.
+    pub unsent: bool,
 }
 
 impl App {
@@ -40,6 +44,17 @@ impl App {
             Err(error) => return Err(folder(format!("can't be read ({error})"))),
         }
         let spec = spec(dir)?;
+        // An image app's files come from its image, so its folder sends none.
+        if spec.image.is_some() {
+            let unsent = sends_more_than_app_toml(dir, spec.icon.as_deref())?;
+            return Ok(Self {
+                name,
+                spec,
+                dir: dir.to_owned(),
+                files: Vec::new(),
+                unsent,
+            });
+        }
         // A static site with no build step arrives built, and projects'
         // .gitignore files often leave out what a build makes, such as Vite's
         // dist, so its folder goes whole.
@@ -54,8 +69,32 @@ impl App {
             spec,
             dir: dir.to_owned(),
             files,
+            unsent: false,
         })
     }
+}
+
+/// Whether a folder's deploy would send files besides `app.toml` from `dir`,
+/// by the rules it walks the folder with ([`files`]), leaving out hidden
+/// files and folders too, such as `.gitignore` or `.DS_Store`, which nobody
+/// means for an image app. It hashes nothing, and stops at the first.
+fn sends_more_than_app_toml(dir: &Path, icon: Option<&str>) -> Result<bool, CliError> {
+    let walk = walker(dir, true, true).build();
+    for entry in walk {
+        let entry = entry.map_err(|error| CliError::Walk {
+            detail: error.to_string(),
+        })?;
+        if entry.depth() == 0 || entry.file_type().is_some_and(|kind| kind.is_dir()) {
+            continue;
+        }
+        if icon.is_some_and(|icon| entry.path() == dir.join(icon)) {
+            continue;
+        }
+        if entry.depth() > 1 || entry.file_name() != "app.toml" {
+            return Ok(true);
+        }
+    }
+    Ok(false)
 }
 
 /// The working folder as the shell names it, in `$PWD`, so a folder reached
@@ -186,12 +225,7 @@ fn collect(
     gitignore: bool,
     files: &mut BTreeMap<String, FileEntry>,
 ) -> Result<(), CliError> {
-    let walk = WalkBuilder::new(root)
-        .standard_filters(false)
-        .git_ignore(gitignore)
-        .require_git(false)
-        .filter_entry(|entry| !left_out(entry))
-        .build();
+    let walk = walker(root, gitignore, false).build();
     for entry in walk {
         let entry = entry.map_err(|error| CliError::Walk {
             detail: error.to_string(),
@@ -234,6 +268,23 @@ fn collect(
     Ok(())
 }
 
+/// Walks `root` as a deploy does: following the `.gitignore` files inside the
+/// app's folder alone, if `gitignore` says to, and leaving out what a deploy
+/// never carries, and hidden files and folders too if `hidden` says to.
+fn walker(root: &Path, gitignore: bool, hidden: bool) -> WalkBuilder {
+    let mut walk = WalkBuilder::new(root);
+    walk.standard_filters(false)
+        .git_ignore(gitignore)
+        .require_git(false)
+        .filter_entry(move |entry| {
+            !left_out(entry)
+                && !(hidden
+                    && entry.depth() > 0
+                    && entry.file_name().as_encoded_bytes().starts_with(b"."))
+        });
+    walk
+}
+
 /// What a deploy never carries: git's own folder, and `.env` files, which
 /// hold secrets.
 fn left_out(entry: &DirEntry) -> bool {
@@ -268,6 +319,37 @@ fn hash(path: &Path) -> io::Result<(String, u64)> {
     let mut hasher = blake3::Hasher::new();
     hasher.update_reader(File::open(path)?)?;
     Ok((hasher.finalize().to_hex().to_string(), hasher.count()))
+}
+
+/// The configured icon file for an image app, which uploads metadata alone.
+pub fn image_icon_file(app: &App, path: &str) -> Result<u64, CliError> {
+    for entry in walker(&app.dir, true, false).build() {
+        let entry = entry.map_err(|error| CliError::Walk {
+            detail: error.to_string(),
+        })?;
+        if entry.path() == app.dir.join(path) {
+            let metadata = std::fs::symlink_metadata(entry.path()).map_err(|source| {
+                CliError::FileUnreadable {
+                    path: path.to_owned(),
+                    source,
+                }
+            })?;
+            if metadata.is_symlink() {
+                return Err(CliError::Symlink {
+                    path: path.to_owned(),
+                });
+            }
+            if !metadata.is_file() {
+                return Err(CliError::NotRegular {
+                    path: path.to_owned(),
+                });
+            }
+            return Ok(metadata.len());
+        }
+    }
+    Err(CliError::AppIcon(appspec::icon::Error(
+        "icon must be included in the deploy; check .gitignore".to_owned(),
+    )))
 }
 
 #[cfg(test)]
@@ -446,6 +528,42 @@ mod tests {
     }
 
     #[test]
+    fn an_image_apps_folder_sends_no_files_and_notes_only_those_a_deploy_would_have_sent() {
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path().join("seo");
+        let image = "title = \"SEO\"\nimage = \"ghcr.io/every-app/open-seo:latest\"\n";
+        for (path, text) in [
+            ("app.toml", image),
+            (".gitignore", "node_modules/\n*.log\n"),
+            (".DS_Store", "x"),
+            (".git/HEAD", "ref: refs/heads/main\n"),
+            (".env", "SECRET=1\n"),
+            (".vscode/settings.json", "{}"),
+            ("node_modules/x/index.js", "x"),
+            ("debug.log", "x"),
+        ] {
+            let path = root.join(path);
+            fs::create_dir_all(path.parent().unwrap()).unwrap();
+            fs::write(path, text).unwrap();
+        }
+        let read = || App::read(&root, AppName::parse("seo").unwrap()).unwrap();
+        let app = read();
+        assert!(app.files.is_empty());
+        assert!(
+            !app.unsent,
+            "only what a deploy leaves out, and hidden files"
+        );
+        // A file a folder's deploy would send is noted, wherever it is.
+        fs::create_dir_all(root.join("config")).unwrap();
+        fs::write(root.join("config/app.toml"), "x").unwrap();
+        assert!(read().unsent);
+        fs::remove_file(root.join("config/app.toml")).unwrap();
+        assert!(!read().unsent);
+        fs::write(root.join("compose.yaml"), "services: {}\n").unwrap();
+        assert!(read().unsent);
+    }
+
+    #[test]
     fn hashes_each_file_and_notes_whether_it_runs() {
         let dir = tempfile::tempdir().unwrap();
         fs::write(dir.path().join("run"), b"#!/bin/sh\n").unwrap();
@@ -489,8 +607,8 @@ mod tests {
     }
 
     #[test]
-    fn the_sample_apps_pass_every_check_a_deploy_makes() {
-        // Validate the examples shipped with this repository through the deploy checks.
+    fn the_public_samples_pass_every_check_a_deploy_makes() {
+        // Private starters are checked through the CLI in the platform integration suite.
         for group in ["../samples"] {
             let root = Path::new(env!("CARGO_MANIFEST_DIR")).join(group);
             let mut read = 0;

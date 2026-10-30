@@ -32,6 +32,11 @@ pub struct Settings {
 }
 
 impl Settings {
+    /// The active agent token, only for `anywhere token` to give a local client.
+    pub fn token(&self) -> &str {
+        &self.token
+    }
+
     /// `ANYWHERE_API` and `ANYWHERE_TOKEN` when both are set, and otherwise
     /// the credentials `anywhere login` wrote. Only one of the two is an
     /// error, never a mix with the file.
@@ -80,11 +85,18 @@ impl Settings {
         token.set_sensitive(true);
         let mut headers = HeaderMap::new();
         headers.insert(AUTHORIZATION, token.clone());
-        let api = self.client().default_headers(headers).timeout(API_TIMEOUT);
+        let api = self
+            .client()
+            .default_headers(headers.clone())
+            .timeout(API_TIMEOUT);
+        // A stream's reader bounds each wait itself, since a whole stream, such
+        // as a follow of an app's logs, lasts as long as it goes on.
+        let streams = self.client().default_headers(headers);
         // Each upload has its own timeout: what's left of the deploy's deadline.
         let uploads = self.client();
         Ok(Clients {
             api: build(api)?,
+            streams: build(streams)?,
             uploads: UploadClient::new(build(uploads)?, &self.api, token)?,
         })
     }
@@ -107,6 +119,22 @@ impl Settings {
     fn client(&self) -> reqwest::ClientBuilder {
         client(self.ca.as_deref())
     }
+}
+
+/// Checks the portal's origin, which `name` set, by the rules the API's
+/// follows, since a person signs in there: HTTPS, or plain HTTP to a loopback
+/// host only.
+pub fn portal_origin(portal: &str, name: &'static str) -> Result<reqwest::Url, CliError> {
+    uploads::api_origin(portal).map_err(|error| match error {
+        CliError::SettingInvalid { .. } => CliError::SettingInvalid {
+            name,
+            problem: "must be the portal's canonical HTTPS origin, such as https://anywhere.so, \
+                      in lowercase with no credentials, path, query, fragment or default port \
+                      (http:// is allowed only for 127.0.0.1, [::1] or localhost)"
+                .to_owned(),
+        },
+        error => error,
+    })
 }
 
 /// What `anywhere login` reaches the control API with, before it has a token:
@@ -159,7 +187,7 @@ impl Anonymous {
 /// are made with it too.
 fn client(ca: Option<&[reqwest::Certificate]>) -> reqwest::ClientBuilder {
     let client = reqwest::Client::builder()
-        .user_agent(control_api::cli_user_agent(env!("CARGO_PKG_VERSION")))
+        .user_agent(control_api::cli_user_agent(env!("ANYWHERE_VERSION")))
         .connect_timeout(CONNECT_TIMEOUT)
         .redirect(reqwest::redirect::Policy::none());
     match ca {
@@ -179,6 +207,9 @@ fn ca_from_env() -> Result<Option<Vec<reqwest::Certificate>>, CliError> {
 pub struct Clients {
     /// For the control API, with the token.
     pub api: reqwest::Client,
+    /// For the control API's answers that stream, with the token and no
+    /// timeout for the whole answer: its reader bounds each wait.
+    pub streams: reqwest::Client,
     /// For uploads, which go only to the API origin, with the token.
     pub uploads: UploadClient,
 }

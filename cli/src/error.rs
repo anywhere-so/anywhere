@@ -6,7 +6,9 @@ use std::io;
 use std::time::Duration;
 
 use appspec::SpecError;
-use control_api::{MAX_DEPLOY_REQUEST_LEN, MAX_SECRET_REQUEST_LEN, SecretValueError};
+use control_api::{
+    MAX_DEPLOY_REQUEST_LEN, MAX_SECRET_REQUEST_LEN, MAX_SECRETS_REQUEST_LEN, SecretValueError,
+};
 use manifest::{ManifestError, UploadError};
 use naming::{NameError, SecretNameError};
 use uuid::Uuid;
@@ -44,6 +46,8 @@ pub enum CliError {
     AppName { folder: String, source: NameError },
     #[error("{source}; name an app as `anywhere apps list` shows it")]
     LookupName { source: NameError },
+    #[error("{source}")]
+    NewName { source: NameError },
     #[error(
         "in OWNER/NAME, {source}; name an app as `anywhere apps list` shows it: NAME for one of yours, OWNER/NAME for one whose owner made you a developer"
     )]
@@ -87,6 +91,8 @@ pub enum CliError {
     AppTomlNotText { path: String },
     #[error(transparent)]
     AppToml(SpecError),
+    #[error(transparent)]
+    AppIcon(appspec::icon::Error),
 
     #[error(
         "couldn't list the app's files: {detail}; check the folder's permissions and its .gitignore files"
@@ -151,6 +157,17 @@ pub enum CliError {
         "the secret's request is {len} bytes of JSON, over the {MAX_SECRET_REQUEST_LEN} a secret's may be, since JSON escapes the value's quotes, backslashes and control characters; encode the value with base64 first"
     )]
     SecretRequestTooLarge { len: usize },
+    #[error("couldn't read the env file {path}: {detail}; check the path")]
+    EnvFileUnreadable { path: String, detail: String },
+    #[error("the env file {path} {problem}; nothing was set")]
+    EnvFileInvalid {
+        path: String,
+        problem: crate::env_file::Problem,
+    },
+    #[error(
+        "the secrets' request is {len} bytes of JSON, over the {MAX_SECRETS_REQUEST_LEN} several secrets' may be, since JSON escapes the values' quotes, backslashes and control characters; set them in two files, or encode the values with base64 first"
+    )]
+    SecretsRequestTooLarge { len: usize },
     #[error(
         "{error}; the change may have gone through before that, and repeating it is safe: {repeat}"
     )]
@@ -200,7 +217,7 @@ pub enum CliError {
     )]
     SecretChangeFailedSilently { operation: Uuid },
     #[error("{message}; {repair}", message = .error.message, repair = repair(.app))]
-    DeployFailed { app: AppRef, error: ErrorBody },
+    DeployFailed { app: AppRef, error: Box<ErrorBody> },
     #[error(
         "the deploy {operation} succeeded but gave no address, which is a bug on our side; list your apps to find it"
     )]
@@ -210,13 +227,13 @@ pub enum CliError {
     )]
     UnexpectedAddress { operation: Uuid },
     #[error(
-        "the deploy {operation} didn't finish within {} minutes; it may still finish, so check the app before deploying again",
+        "the deploy {operation} was still running when the CLI stopped following it, after {} minutes, and it goes on without the CLI; wait for it with `anywhere operations get {operation} --wait` rather than deploying again",
         .waited.as_secs() / 60
     )]
-    TimedOut { operation: Uuid, waited: Duration },
+    StillRunning { operation: Uuid, waited: Duration },
 
     #[error(
-        "the logs stopped partway: {detail}; read them again, which says why if you may no longer read them, and what came already comes again"
+        "the logs stopped partway: {detail}; read them again, which says why if you may no longer read them"
     )]
     LogsInterrupted { detail: String },
     #[error(
@@ -281,6 +298,8 @@ pub enum CliError {
         "the new token didn't start working ({detail}); it may yet, so revoke it in the portal's Agent tokens and run `anywhere login` again"
     )]
     TokenNotReady { detail: String },
+    #[error("the login's approval link isn't on {expected}, so the CLI won't show it; {fix}")]
+    LoginPortalUnexpected { expected: String, fix: String },
 
     #[error(
         "{path} is a symlink to {target}, and `anywhere skill install` never writes through one, so it can't overwrite a checkout's or another tool's copy of the skill; don't remove the link: tell the person you work for, who may have made it on purpose, as platform developers link the skill to their checkout, and who can replace it with this CLI's skill by removing it and running `anywhere skill install` again"
@@ -314,6 +333,7 @@ impl CliError {
             CliError::AppFolder { .. } => "app_folder_invalid",
             CliError::AppName { source, .. }
             | CliError::LookupName { source }
+            | CliError::NewName { source }
             | CliError::QualifiedName { source } => source.code(),
             CliError::AppRefSlashes { .. } => "invalid_app_name",
             CliError::OwnerOnly => "owner_only",
@@ -321,6 +341,7 @@ impl CliError {
             CliError::AppTomlUnreadable { .. } => "app_toml_unreadable",
             CliError::AppTomlNotText { .. } => "app_toml_invalid",
             CliError::AppToml(error) => error.code(),
+            CliError::AppIcon(error) => error.code(),
             CliError::Walk { .. } => "app_files_unreadable",
             CliError::Symlink { .. } => "app_file_symlink",
             CliError::NotRegular { .. } => "app_file_not_regular",
@@ -344,6 +365,9 @@ impl CliError {
             CliError::SecretValueNotText => "secret_value_invalid",
             CliError::SecretValue(error) => error.code(),
             CliError::SecretRequestTooLarge { .. } => "secret_request_too_large",
+            CliError::EnvFileUnreadable { .. } => "env_file_unreadable",
+            CliError::EnvFileInvalid { problem, .. } => problem.code(),
+            CliError::SecretsRequestTooLarge { .. } => "secrets_request_too_large",
             CliError::ChangeUnconfirmed { error, .. } => error.code(),
             CliError::Api(error) | CliError::OperationFailed(error) => &error.code,
             CliError::UploadRefused(error) => &error.code,
@@ -359,7 +383,7 @@ impl CliError {
             CliError::NoAddress { .. } | CliError::UnexpectedAddress { .. } => {
                 "deploy_answer_invalid"
             }
-            CliError::TimedOut { .. } => "deploy_timed_out",
+            CliError::StillRunning { .. } => "deploy_still_running",
             CliError::LogsInterrupted { .. } => "logs_interrupted",
             CliError::ExecInterrupted { .. } => "exec_interrupted",
             CliError::PullDestinationExists { .. } => "destination_exists",
@@ -376,6 +400,7 @@ impl CliError {
             CliError::LoginExpired => "cli_login_expired",
             CliError::LoginInterrupted { .. } => "cli_login_interrupted",
             CliError::TokenNotReady { .. } => "token_not_ready",
+            CliError::LoginPortalUnexpected { .. } => "login_portal_unexpected",
             CliError::SkillLinked { .. } => "skill_path_linked",
             CliError::SkillUnwritable { .. } => "skill_write_failed",
             CliError::SkillPartlyInstalled { error, .. } => error.code(),

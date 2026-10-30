@@ -40,9 +40,11 @@ fn created() -> Reply {
 }
 
 fn me() -> Reply {
-    reply(json!({"username": "alice", "plan": "free", "apps": 0,
-        "limits": {"apps": 3, "largest_size": "small", "app_disk_gib": 10, "total_disk_gib": null},
-        "billing": {"available": true, "customer": false}}))
+    reply(
+        json!({"username": "alice", "apps_origin": "https://anywhereapps.test", "plan": "free", "apps": 0,
+        "limits": {"max_apps":3,"cpu_millicores":1000,"memory_bytes":2147483648u64,"disk_bytes":10737418240u64},
+        "billing": {"available": true, "customer": false}}),
+    )
 }
 
 /// Runs the CLI with its configuration in `config`, and only the environment
@@ -350,10 +352,13 @@ async fn a_collect_that_was_sent_is_never_sent_again() {
 
 #[tokio::test]
 async fn an_approval_link_off_the_apis_portal_or_without_its_own_code_is_refused() {
-    for link in [
-        "https://evil.test/cli-login#code=BCDF-GHJK".to_owned(),
-        "{api}/cli-login".to_owned(),
-        "{api}/cli-login#code=BCDF-GHJL".to_owned(),
+    for (link, code) in [
+        (
+            "https://evil.test/cli-login#code=BCDF-GHJK",
+            "login_portal_unexpected",
+        ),
+        ("{api}/cli-login", "api_answer_invalid"),
+        ("{api}/cli-login#code=BCDF-GHJL", "api_answer_invalid"),
     ] {
         let server = Server::start_with(|api| {
             let link = link.replace("{api}", api);
@@ -376,10 +381,124 @@ async fn an_approval_link_off_the_apis_portal_or_without_its_own_code_is_refused
             &[],
         )
         .await;
-        failure(&output, "api_answer_invalid");
+        failure(&output, code);
         assert!(!text(&output.stderr).contains("evil.test"));
         assert_eq!(received(&server).len(), 1);
     }
+}
+
+/// The start of a login whose approval link is `link`.
+fn started_at(link: String) -> Reply {
+    Reply {
+        status: 201,
+        ..reply(json!({
+            "device_code": device_code(),
+            "user_code": CODE,
+            "approve_url": link,
+            "expires_at": (chrono::Utc::now() + chrono::TimeDelta::minutes(10)).to_rfc3339(),
+            "interval_seconds": 1,
+        }))
+    }
+}
+
+#[tokio::test]
+async fn a_named_portal_is_the_one_place_the_approval_link_may_lead() {
+    // The stand-in API is at 127.0.0.1, and its portal at localhost: another
+    // host than the API's address implies.
+    let portal_of = |api: &str| api.replace("127.0.0.1", "localhost");
+    for (args, env) in [
+        (vec!["--portal", "{portal}"], vec![]),
+        (vec![], vec![("ANYWHERE_PORTAL", "{portal}")]),
+        // --portal wins over ANYWHERE_PORTAL.
+        (
+            vec!["--portal", "{portal}"],
+            vec![("ANYWHERE_PORTAL", "https://elsewhere.test")],
+        ),
+        // Beside --portal, ANYWHERE_PORTAL isn't read, so a bad one is no error.
+        (vec!["--portal", "{portal}"], vec![("ANYWHERE_PORTAL", "")]),
+    ] {
+        let server = Server::start_with(|api| {
+            vec![
+                started_at(format!("{}/cli-login#code={CODE}", portal_of(api))),
+                created(),
+                me(),
+            ]
+        })
+        .await;
+        let portal = portal_of(&server.url);
+        let config = tempfile::tempdir().unwrap();
+        let all: Vec<String> = ["--json", "login", "--api", &server.url]
+            .into_iter()
+            .map(str::to_owned)
+            .chain(args.iter().map(|arg| arg.replace("{portal}", &portal)))
+            .collect();
+        let all: Vec<&str> = all.iter().map(String::as_str).collect();
+        let env: Vec<(&str, String)> = env
+            .iter()
+            .map(|(name, value)| (*name, value.replace("{portal}", &portal)))
+            .collect();
+        let env: Vec<(&str, &str)> = env.iter().map(|(n, v)| (*n, v.as_str())).collect();
+        let output = run_in(config.path(), &all, &env).await;
+        let result = success(&output);
+        // The portal is used only to check the link; the login saves the API.
+        assert_eq!(result["api"], server.url);
+        let saved: Value =
+            serde_json::from_slice(&std::fs::read(credentials(config.path())).unwrap()).unwrap();
+        assert_eq!(saved, json!({"api": server.url, "token": TOKEN}));
+    }
+
+    // With a portal named, a link on the API's own origin, which it would
+    // otherwise accept, is refused before anything else is asked.
+    let server = Server::start_with(|api| vec![started(api, 600)]).await;
+    let config = tempfile::tempdir().unwrap();
+    let portal = portal_of(&server.url);
+    let output = run_in(
+        config.path(),
+        &["--json", "login", "--api", &server.url, "--portal", &portal],
+        &[],
+    )
+    .await;
+    let error = failure(&output, "login_portal_unexpected");
+    let message = error["message"].as_str().unwrap();
+    assert!(message.contains(&format!("the portal --portal names, {portal}")));
+    assert_eq!(error["retryable"], false);
+    assert_eq!(received(&server).len(), 1);
+    assert!(!credentials(config.path()).exists());
+}
+
+#[tokio::test]
+async fn login_needs_a_portal_that_is_an_origin_and_sends_nothing_without_one() {
+    let server = Server::start(vec![]).await;
+    let config = tempfile::tempdir().unwrap();
+    for portal in [
+        "http://portal.test",
+        "https://portal.test/cli-login",
+        "https://user@portal.test",
+        "https://portal.test?x=1",
+    ] {
+        let output = run_in(
+            config.path(),
+            &["--json", "login", "--api", &server.url, "--portal", portal],
+            &[],
+        )
+        .await;
+        let error = failure(&output, "setting_invalid");
+        assert!(error["message"].as_str().unwrap().starts_with("--portal "));
+        let output = run_in(
+            config.path(),
+            &["--json", "login", "--api", &server.url],
+            &[("ANYWHERE_PORTAL", portal)],
+        )
+        .await;
+        let error = failure(&output, "setting_invalid");
+        assert!(
+            error["message"]
+                .as_str()
+                .unwrap()
+                .starts_with("ANYWHERE_PORTAL ")
+        );
+    }
+    assert!(received(&server).is_empty());
 }
 
 #[tokio::test]

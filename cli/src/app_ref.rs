@@ -77,8 +77,8 @@ mod tests {
         // App names hold hyphens, so this is an app of your own, not alice's.
         assert_eq!(parsed("alice-wiki"), (None, "alice-wiki".to_owned()));
         assert_eq!(
-            parsed("alice/wiki"),
-            (Some("alice".to_owned()), "wiki".to_owned())
+            parsed("michael/wiki"),
+            (Some("michael".to_owned()), "wiki".to_owned())
         );
         assert_eq!(
             parsed("m1/my-wiki-2"),
@@ -103,14 +103,14 @@ mod tests {
                 "in OWNER/NAME, the username is empty",
             ),
             (
-                "alice/",
+                "michael/",
                 "invalid_app_name",
                 "in OWNER/NAME, the app name is empty",
             ),
             (
-                "Alice/wiki",
+                "Michael/wiki",
                 "invalid_username",
-                "in OWNER/NAME, the username has 'A' at character 1",
+                "in OWNER/NAME, the username has 'M' at character 1",
             ),
             (
                 "mi-chael/wiki",
@@ -118,16 +118,16 @@ mod tests {
                 "in OWNER/NAME, the username has '-' at character 3",
             ),
             (
-                "alice/Wiki",
+                "michael/Wiki",
                 "invalid_app_name",
                 "in OWNER/NAME, the app name has 'W' at character 1",
             ),
             (
-                "alice/wiki/x",
+                "michael/wiki/x",
                 "invalid_app_name",
-                "\"alice/wiki/x\" has more than one `/`",
+                "\"michael/wiki/x\" has more than one `/`",
             ),
-            ("alice//wiki", "invalid_app_name", "has more than one `/`"),
+            ("michael//wiki", "invalid_app_name", "has more than one `/`"),
         ] {
             let (got, message) = refused(text);
             assert_eq!(got, code, "{text:?}: {message}");

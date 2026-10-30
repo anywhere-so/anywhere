@@ -10,17 +10,19 @@ anywhere secrets list --app weather-board
 anywhere secrets unset API_KEY --app weather-board
 ```
 
-`set` accepts values only on stdin. Use `printf %s`, not `echo`, whose trailing newline becomes part of the value. Never print the value or write it to a file. `list` returns names only.
+`set` accepts values only on stdin. Use `printf %s`, not `echo`, whose trailing newline becomes part of the value. Never print values; keep any explicit env-file workflow below private and outside uploads. `list` returns names only.
 
 Use `--app NAME` or `--app OWNER/NAME`, or run inside the app folder to infer its name. Folder inference also works before first deploy; that deploy starts with the secrets already set. On a shared app always pass its qualified name.
 
-Names: uppercase letter followed by uppercase letters, digits or underscores, at most 64 characters. `PORT`, `PATH`, `HOME` and `ANYWHERE_*` are reserved. Values: UTF-8, 1–32 KiB, no NUL; encode binary input with base64 and decode in the app. Limits: 100 secrets, 1 MiB combined.
+Names: uppercase letter followed by uppercase letters, digits or underscores, at most 64 characters. `PORT`, `PATH`, `HOME` and `ANYWHERE_*` are reserved. `anywhere secrets set --env-file PATH --app NAME` sets a whole dotenv batch atomically in one restart. Format: `NAME=value`, blank lines and comments; values after the first `=` are literal, with no shell expansion, unquoting or escapes. Duplicates, invalid entries or size failures reject the whole batch. Prefer an existing private file; if creating one, use owner-only permissions outside any upload directory and remove it when no longer needed.
 
-Changes restart a running app. The CLI follows the operation for up to 10 minutes; startup failure fails the change. After receiving an operation ID, inspect it before repeating. Before an ID, use the error's retry guidance; repeating the same set/unset is safe (`no_such_secret` on repeated unset means it is absent). Pass warnings to the user and act on their message.
+Values: UTF-8, 1–32 KiB, no NUL; encode binary input with base64 and decode in the app. Limits: 100 secrets, 1 MiB combined.
+
+Changes restart a running app. The CLI follows the operation for up to 22 minutes; startup failure fails the change. After receiving an operation ID, inspect it before repeating. Before an ID, use the error's retry guidance; repeating the same set/unset is safe (`no_such_secret` on repeated unset means it is absent). Pass warnings to the user and act on their message.
 
 ## Sharing
 
-Apps are private until the owner shares them by email. Members can use the app. Developers can also deploy, exec as root, read files/logs/secrets and change secrets for that app. Only the owner manages shares. Web/static apps can be shared; background apps return `app_has_no_address`.
+Apps default to restricted access; sharing grants signed-in access without making the app public. Members can use the app. Developers can also deploy, exec as root, read files/logs/secrets and change secrets for that app. Only the owner manages shares. Web/static apps can be shared; background apps return `app_has_no_address`.
 
 ```sh
 anywhere shares add notes jo@example.com
@@ -59,7 +61,7 @@ Changing the Drive's code follows the ordinary app workflow. It has `server.js` 
 
 ## Delete an app
 
-Delete only when the user requests that specific app. No trash or restore exists. Its address and shares disappear, its name becomes reusable, and a later deploy with that name creates an app on an empty disk. Files/secrets remain inaccessible on the servers until purged; the user can request earlier erasure at michael@digitalcarbon.ai.
+Delete only when the user requests that specific app. No trash or restore exists. Its address and shares disappear, its name becomes reusable, and a later deploy with that name creates an app on an empty disk. Files/secrets remain inaccessible on the servers; the user can request erasure at michael@digitalcarbon.ai.
 
 ```sh
 anywhere apps delete NAME --yes
@@ -68,3 +70,15 @@ anywhere apps delete NAME --yes
 The CLI waits until nothing serves the app. A nonterminal invocation requires `--yes` (`confirmation_needed` otherwise); use it only for the app the user authorized. Only the owner can delete, not a developer (`owner_only`). `app_busy` means wait for the current deploy. `no_such_app` after a repeated request means it is already absent.
 
 A failed deletion operation such as `delete_incomplete` can still leave the app deleted. Report the failure message and inspect its operation; do not assume failure restored it or keep issuing deletion requests.
+
+## Public access
+
+Only the owner may change anonymous access:
+
+```sh
+anywhere apps access NAME
+anywhere apps access NAME public
+anywhere apps access NAME restricted
+```
+
+`public` exposes the app's pages, API actions and WebSockets to everyone, not only a selected read-only route. Do this only when the user requests it and understands what becomes reachable. Sharing and app-level authorization still matter for authenticated visitors. Anonymous callers have no trusted signed-in identity; the app must handle that case explicitly and authenticate sensitive actions itself. A webhook endpoint in a public app must validate the provider's signature/credential; do not solve access by embedding an Anywhere account token. Restricted apps still require Anywhere authentication. Invalid supplied credentials are refused rather than silently treated as anonymous. Changing access is not a substitute for granting a developer role.

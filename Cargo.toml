@@ -39,6 +39,9 @@ toml = "1.1.8"
 unicode-properties = { version = "0.1.4", default-features = false, features = ["general-category"] }
 uuid = { version = "1.28.0", features = ["serde", "v7"] }
 zstd = { version = "0.14.2", default-features = false }
+base64 = "=0.22.1"
+png = "=0.18.1"
+psl = "=2.1.241"
 [workspace.lints.rust]
 # `unsafe` needs an `allow` that gives its reason, plus a `// SAFETY:` comment.
 unsafe_code = "deny"

@@ -1,16 +1,20 @@
-//! Shared HTTP API data types and validation used by the Anywhere CLI.
+//! Shared client API models and validation. Server handlers live with the service.
 pub use appspec::AppSpec;
 use chrono::{DateTime, Utc};
 pub use cli_contract::*;
 pub use cli_login::*;
+pub use follow::*;
 pub use manifest::FileEntry;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
-use std::fmt;
-use std::time::Duration;
+use std::{fmt, time::Duration};
+pub use usage::*;
 use uuid::Uuid;
 mod cli_contract;
 mod cli_login;
+mod follow;
+pub mod plans;
+mod usage;
 /// The most a deploy's request may be, as JSON: room for any app's list of
 /// files, while bounding what one deploy makes the control plane read before it
 /// checks the list. The CLI checks its request against it before sending, and
@@ -18,9 +22,8 @@ mod cli_login;
 pub const MAX_DEPLOY_REQUEST_LEN: usize = 32 * 1024 * 1024;
 
 /// The longest a follow of an app's logs lasts. The control API then ends it as
-/// if the log had, so its caller's access is checked again when it asks again.
-/// A follow that ends sooner was cut off, even when the connection's last hop
-/// ends it cleanly, as Cloud Run's front end does with a response cut short.
+/// if the log had, so its caller's access is checked again when it asks again,
+/// with `after`, to go on from where it got to.
 pub const LOGS_FOLLOW_FOR: Duration = Duration::from_secs(30 * 60);
 
 /// The most bytes a secret's value may have.
@@ -41,6 +44,13 @@ pub const MAX_SECRETS: usize = 100;
 /// arguments and environment take 2 MiB together, so this leaves half of that
 /// for the app's command and the platform's own variables.
 pub const MAX_SECRETS_LEN: usize = 1024 * 1024;
+
+/// The most a request that sets several secrets may be, as JSON: twice what
+/// an app's secrets may be, for the escapes JSON adds, as a single secret's
+/// request allows, and 64 bytes for each entry's own keys and punctuation,
+/// `{"name":"","value":""},`, and the request's. The CLI checks its request
+/// against it before sending, and the endpoint's limit on its body is the same.
+pub const MAX_SECRETS_REQUEST_LEN: usize = 2 * MAX_SECRETS_LEN + 64 * (MAX_SECRETS + 1);
 
 /// A new agent token, with its secret, which no other answer gives.
 #[derive(Clone, PartialEq, Eq, Deserialize, Serialize, JsonSchema)]
@@ -65,12 +75,15 @@ impl fmt::Debug for AgentTokenCreated {
 #[derive(Clone, Debug, PartialEq, Eq, Deserialize, Serialize, JsonSchema)]
 pub struct Me {
     pub username: String,
+    /// Canonical apps namespace and port, for the CLI to name an app's URL
+    /// before its first deploy.
+    pub apps_origin: String,
     /// The plan the account is on.
     pub plan: Plan,
     /// What the plan allows.
     pub limits: PlanLimits,
     /// How many apps the account has: those `GET /v1/apps` lists, which
-    /// `limits.apps` caps.
+    /// `limits.max_apps` caps when present.
     pub apps: u32,
     /// Whether Pro can be bought here, and managed.
     pub billing: Billing,
@@ -85,6 +98,10 @@ pub struct Billing {
     /// Whether the account has paid through Stripe, so Stripe's billing page
     /// (`POST /v1/billing/portal`) can show and cancel what it pays.
     pub customer: bool,
+    /// Where a person upgrades to Pro, the portal's billing page, such as
+    /// `https://anywhere.so/billing`, on a platform that sells it. A plan's
+    /// refusal offers it to an owner on Free.
+    pub upgrade_url: Option<String>,
 }
 
 /// An account's plan, which limits its apps (`PlanLimits`).
@@ -95,21 +112,33 @@ pub enum Plan {
     Pro,
 }
 
-/// What a plan allows. A deploy or a new app that asks for more is refused
-/// with `plan_app_limit`, `plan_size_unavailable` or `plan_disk_limit`, while
-/// what an app already has is never taken away.
-#[derive(Clone, Debug, PartialEq, Eq, Deserialize, Serialize, JsonSchema)]
+/// Current plan ceilings. App caps apply at the next deploy; max_apps blocks
+/// only the first deploy of a new app and never removes existing apps.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Deserialize, Serialize, JsonSchema)]
 pub struct PlanLimits {
-    /// The most apps the account may have.
-    pub apps: u32,
-    /// The largest size an app may have.
-    pub largest_size: appspec::Size,
-    /// The most disk each app may have, in GiB, on a plan that limits each
-    /// app's, as Free does.
-    pub app_disk_gib: Option<u64>,
-    /// The most disk the account's apps may have together, in GiB, on a plan
-    /// that limits their total, as Pro does.
-    pub total_disk_gib: Option<u64>,
+    /// The most deployed, non-deleted apps, including the Drive; null is unlimited.
+    #[schemars(required, schema_with = "nullable_app_count")]
+    pub max_apps: Option<u32>,
+    pub cpu_millicores: u32,
+    pub memory_bytes: u64,
+    pub disk_bytes: u64,
+}
+
+// `required` alone makes schemars 0.8 remove Option's nullability as well.
+fn nullable_app_count(
+    generator: &mut schemars::r#gen::SchemaGenerator,
+) -> schemars::schema::Schema {
+    <Option<u32>>::json_schema(generator)
+}
+
+impl PlanLimits {
+    pub fn per_app(self) -> appspec::Limits {
+        appspec::Limits {
+            cpu_millicores: self.cpu_millicores,
+            memory_bytes: self.memory_bytes,
+            disk_bytes: self.disk_bytes,
+        }
+    }
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize, JsonSchema)]
@@ -131,8 +160,14 @@ pub struct OwnerQuery {
 #[derive(Clone, Debug, Deserialize, Serialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct LogsQuery {
+    /// Return structured output and completeness notices even for a finite read.
+    pub events: Option<bool>,
     /// Whether to go on with what the app prints next.
     pub follow: Option<bool>,
+    /// With `follow`, the `id` of the last event an earlier follow sent:
+    /// send only what follows it. `end` starts at the current end instead,
+    /// sending an empty first event with that place before any new output.
+    pub after: Option<String>,
     /// The username of the app's owner, for an app whose owner made you a
     /// developer. Without it, the app is yours.
     pub owner: Option<String>,
@@ -148,6 +183,13 @@ pub struct SecretPath {
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize, JsonSchema)]
+pub struct IconPath {
+    pub app: String,
+    /// Desired-state revision makes a replacement icon a new image URL.
+    pub revision: u64,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize, JsonSchema)]
 pub struct OperationPath {
     pub operation: Uuid,
 }
@@ -159,12 +201,19 @@ pub struct AppList {
 
 #[derive(Clone, Debug, PartialEq, Eq, Deserialize, Serialize, JsonSchema)]
 pub struct App {
-    /// The resources its `app.toml` asks for.
-    pub resources: appspec::Resources,
+    /// Why the platform paused the app, or null. Its data is kept.
+    pub paused: Option<Paused>,
+    /// This UTC month’s cost, visible only to its owner.
+    pub month_cost_microusd: Option<u64>,
+    /// The numeric limits resolved at its last deploy.
+    pub limits: appspec::Limits,
     /// The app's name, which is its folder's name.
     pub name: String,
     /// The title its `app.toml` gives, shown on the home screen.
     pub title: String,
+    /// Same-origin authenticated PNG endpoint; absent for the generated icon.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub icon_url: Option<String>,
     /// Where the app opens. None for a background app, which has no web
     /// address.
     pub url: Option<String>,
@@ -178,6 +227,9 @@ pub struct App {
     pub restarts: u32,
     /// When its newest deploy started. None until it has had one.
     pub deployed_at: Option<DateTime<Utc>>,
+    /// For an app whose status is `failed`: why its host couldn't start it,
+    /// and what to do.
+    pub error: Option<ErrorBody>,
 }
 
 /// How an app is doing. Its host restarts it whenever it exits, waiting a
@@ -199,6 +251,12 @@ pub enum AppStatus {
     Crashed,
     /// It isn't meant to run: it hasn't been deployed yet, or it was stopped.
     Stopped,
+    /// Its host refused to start it, for the reason its `error` gives, such as
+    /// `app_disk_missing` for a disk that isn't on its host, and runs nothing
+    /// for it, so `anywhere exec` doesn't work in it. The platform doesn't try
+    /// again by itself; its next deploy or change to its secrets does, if what
+    /// `error` says allows.
+    Failed,
 }
 
 /// The most deploys that one app's details list, as `app_view` says.
@@ -209,6 +267,9 @@ pub const RECENT_LEN: usize = 20;
 pub struct AppDetails {
     pub app: App,
     pub deploys: Vec<Deploy>,
+    /// More deploys exist than this bounded history includes. Look up a known operation by ID.
+    #[serde(default)]
+    pub deploys_truncated: bool,
 }
 
 /// A deploy of an app: the operation that writes its files, builds it and
@@ -232,8 +293,50 @@ pub struct Deploy {
 pub struct DeployRequest {
     /// The app's `app.toml`, as read by the caller. The control plane checks it again.
     pub spec: AppSpec,
-    /// Every file the deploy writes into `/app`, each of which is uploaded.
+    /// Every file the deploy writes into `/app`, each of which is uploaded;
+    /// none for an image app, whose files come from its image.
     pub files: Vec<FileEntry>,
+    /// Whether the deploy must make the app: one of yours of this name is
+    /// `app_exists`, so a new app never replaces one. Not with `owner`.
+    #[serde(default)]
+    pub new_app: bool,
+    /// Original PNG bytes for spec.icon. Folder apps match that file in the
+    /// manifest; image apps carry the icon as metadata without runtime files.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub icon_png: Option<Vec<u8>>,
+}
+
+impl DeployRequest {
+    /// Checks the image and binds it to the manifest; returns only sanitized pixels.
+    pub fn sanitized_icon(&self) -> Result<Option<Vec<u8>>, appspec::icon::Error> {
+        let invalid = |message: &str| appspec::icon::Error(message.to_owned());
+        match (&self.spec.icon, &self.icon_png) {
+            (None, None) => Ok(None),
+            (Some(_), Some(bytes)) if self.spec.image.is_some() => {
+                appspec::icon::sanitize(bytes).map(Some)
+            }
+            (Some(path), Some(bytes)) => {
+                let file = self
+                    .files
+                    .iter()
+                    .find(|file| &file.path == path)
+                    .ok_or_else(|| {
+                        invalid("icon must be included in the deploy; check .gitignore")
+                    })?;
+                if file.size != bytes.len() as u64
+                    || file.hash != blake3::hash(bytes).to_hex().as_str()
+                {
+                    return Err(invalid(
+                        "icon bytes do not match the deploy manifest; run deploy again",
+                    ));
+                }
+                appspec::icon::sanitize(bytes).map(Some)
+            }
+            _ => Err(invalid(
+                "icon and icon_png must either both be present or both be absent",
+            )),
+        }
+    }
 }
 
 /// Whom to stop sharing an app with.
@@ -282,6 +385,21 @@ pub enum ShareRole {
     Developer,
 }
 
+/// Whether the app admits anonymous visitors.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum Visibility {
+    Restricted,
+    Public,
+}
+
+/// Owner-controlled anonymous access; new apps are restricted.
+#[derive(Clone, Debug, Serialize, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct AppAccess {
+    pub visibility: Visibility,
+}
+
 /// The people an app is shared with.
 #[derive(Clone, Debug, PartialEq, Eq, Deserialize, Serialize, JsonSchema)]
 pub struct ShareList {
@@ -309,12 +427,17 @@ pub struct SharedAppList {
 pub struct SharedApp {
     /// The owner's username.
     pub owner: String,
+    /// Same-origin authenticated PNG endpoint.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub icon_url: Option<String>,
     /// The app's name.
     pub name: String,
     /// Where it answers.
     pub url: String,
     /// What you may do with it.
     pub role: ShareRole,
+    /// Whether the platform paused the app, or null. Its data is kept.
+    pub paused: Option<Paused>,
 }
 
 /// The names of an app's secrets, in order, without their values.
@@ -361,6 +484,113 @@ impl SecretRequest {
             return Err(SecretValueError::Nul);
         }
         Ok(())
+    }
+}
+
+/// Several secrets to set in one change, each by its name.
+#[derive(Clone, PartialEq, Eq, Deserialize, Serialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct SecretsRequest {
+    /// The secrets, each name once, 1 to 100 of them.
+    pub secrets: Vec<NamedSecret>,
+    /// As for one secret: whether to make the app, stopped and never
+    /// deployed, if you have none of that name.
+    #[serde(default)]
+    pub create_app: bool,
+}
+
+/// One secret of several, by its name.
+#[derive(Clone, PartialEq, Eq, Deserialize, Serialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct NamedSecret {
+    /// The environment variable the app reads it from, as for one secret.
+    pub name: String,
+    /// Its value, as for one secret.
+    pub value: String,
+}
+
+/// Leaves the values out, so a request logged or printed whole doesn't leak
+/// them.
+impl fmt::Debug for SecretsRequest {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("SecretsRequest")
+            .field("secrets", &self.secrets)
+            .field("create_app", &self.create_app)
+            .finish()
+    }
+}
+
+impl fmt::Debug for NamedSecret {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("NamedSecret")
+            .field("name", &self.name)
+            .field("value", &"<hidden>")
+            .finish()
+    }
+}
+
+impl SecretsRequest {
+    /// Checks every name and value, as the CLI does before sending them and
+    /// the control plane does again, and gives the names in order. An error
+    /// names the secret, never its value.
+    pub fn check(&self) -> Result<Vec<naming::SecretName>, SecretsError> {
+        if self.secrets.is_empty() {
+            return Err(SecretsError::None);
+        }
+        if self.secrets.len() > MAX_SECRETS {
+            return Err(SecretsError::TooMany {
+                count: self.secrets.len(),
+            });
+        }
+        let mut names = Vec::with_capacity(self.secrets.len());
+        for secret in &self.secrets {
+            let name = naming::SecretName::parse(&secret.name).map_err(SecretsError::Name)?;
+            if names.contains(&name) {
+                return Err(SecretsError::Repeated { name });
+            }
+            SecretRequest {
+                value: secret.value.clone(),
+                create_app: false,
+            }
+            .check()
+            .map_err(|error| SecretsError::Value {
+                name: name.clone(),
+                error,
+            })?;
+            names.push(name);
+        }
+        Ok(names)
+    }
+}
+
+/// Why a request to set several secrets was refused. Messages never hold a
+/// value.
+#[derive(Clone, Debug, PartialEq, Eq, thiserror::Error)]
+pub enum SecretsError {
+    #[error("the request sets no secrets; give at least one")]
+    None,
+    #[error("the request sets {count} secrets, and an app has at most {MAX_SECRETS}; set fewer")]
+    TooMany { count: usize },
+    #[error(transparent)]
+    Name(naming::SecretNameError),
+    #[error("{name} is given more than once; give each secret once")]
+    Repeated { name: naming::SecretName },
+    #[error("{name}: {error}")]
+    Value {
+        name: naming::SecretName,
+        error: SecretValueError,
+    },
+}
+
+impl SecretsError {
+    pub fn code(&self) -> &'static str {
+        match self {
+            SecretsError::None => "secrets_none",
+            SecretsError::TooMany { .. } => "too_many_secrets",
+            SecretsError::Name(error) => error.code(),
+            SecretsError::Repeated { .. } => "secret_name_repeated",
+            SecretsError::Value { error, .. } => error.code(),
+        }
     }
 }
 
@@ -443,9 +673,8 @@ pub struct Operation {
     pub error: Option<ErrorBody>,
     /// For a secret change that succeeded on a web app with no address yet:
     /// why, and what gives it one. For a share that makes someone a developer:
-    /// what a developer can do that removing them won't undo. For a deploy
-    /// that makes its app smaller, `app_size_lowered`: what to set to keep its
-    /// size.
+    /// what a developer can do that removing them won't undo. A deploy may also
+    /// carry advice recorded when it was admitted.
     pub warning: Option<Warning>,
     /// For a deploy: the step it's on, or, once it has ended, the step it ended
     /// in.
@@ -464,7 +693,8 @@ pub struct Progress {
 #[serde(rename_all = "snake_case")]
 pub enum DeployStep {
     /// Waiting for its files, writing them into `/app`, or running the app's
-    /// build step there.
+    /// build step there; for an image app, pulling its image and writing it
+    /// onto the app's disk.
     Uploading,
     /// Starting the app, and checking it started.
     Starting,
@@ -482,6 +712,8 @@ pub struct Warning {
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Deserialize, Serialize, JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum OperationKind {
+    /// Changes anonymous access and waits for the gateways to apply and drain it.
+    AppAccess,
     /// Revocation: the gateways and the control plane stop serving the
     /// credential and drain every stream it opened.
     CredentialRevoke,
@@ -535,6 +767,9 @@ pub struct Upload {
 /// the same request again later could work.
 #[derive(Clone, Debug, PartialEq, Eq, Deserialize, Serialize, JsonSchema)]
 pub struct ErrorBody {
+    /// Platform evidence for this refusal. Absent when this source cannot supply it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub diagnostic: Option<RequestDiagnostic>,
     /// A stable code, such as `invalid_app_name`, that callers can match on.
     pub code: String,
     /// What went wrong and how to fix it.
@@ -543,6 +778,72 @@ pub struct ErrorBody {
     pub retryable: bool,
 }
 
+/// Facts about a platform HTTP failure, never request contents or guessed causes.
+#[derive(Clone, Debug, PartialEq, Eq, Deserialize, Serialize, JsonSchema)]
+pub struct RequestDiagnostic {
+    pub request_id: Uuid,
+    pub observed_unix_ms: u64,
+    pub component: DiagnosticComponent,
+    pub phase: DiagnosticPhase,
+    /// `rejected` means no upstream action; `unknown` must not be retried blindly.
+    pub outcome: DiagnosticOutcome,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Deserialize, Serialize, JsonSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum DiagnosticComponent {
+    Gateway,
+}
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Deserialize, Serialize, JsonSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum DiagnosticPhase {
+    Admission,
+    Connecting,
+    Forwarding,
+}
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Deserialize, Serialize, JsonSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum DiagnosticOutcome {
+    Rejected,
+    Unknown,
+}
+
+/// Why the platform paused an app.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Deserialize, Serialize, JsonSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum Paused {
+    UsageLimit,
+}
+
+#[derive(Clone, Copy, Debug)]
+pub enum PlanErrorKind {
+    BadRequest,
+    Forbidden,
+}
+#[derive(Clone, Debug)]
+pub struct PlanError {
+    pub kind: PlanErrorKind,
+    pub body: ErrorBody,
+}
+impl PlanError {
+    pub fn bad_request(code: &str, message: impl Into<String>) -> Self {
+        Self::new(PlanErrorKind::BadRequest, code, message)
+    }
+    pub fn forbidden(code: &str, message: impl Into<String>) -> Self {
+        Self::new(PlanErrorKind::Forbidden, code, message)
+    }
+    fn new(kind: PlanErrorKind, code: &str, message: impl Into<String>) -> Self {
+        Self {
+            kind,
+            body: ErrorBody {
+                diagnostic: None,
+                code: code.to_owned(),
+                message: message.into(),
+                retryable: false,
+            },
+        }
+    }
+}
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -610,5 +911,58 @@ mod tests {
             "files": [{"path": "index.html", "hash": "ab", "size": 2, "executable": false, "owner": "root"}],
         });
         assert!(serde_json::from_value::<DeployRequest>(json).is_err());
+    }
+    #[test]
+    fn several_secrets_are_checked_whole_and_never_shown() {
+        let secret = |name: &str, value: &str| NamedSecret {
+            name: name.to_owned(),
+            value: value.to_owned(),
+        };
+        let request = |secrets| SecretsRequest {
+            secrets,
+            create_app: false,
+        };
+        let names = request(vec![secret("A", "1"), secret("B_2", "two\n")])
+            .check()
+            .unwrap();
+        assert_eq!(
+            names
+                .iter()
+                .map(naming::SecretName::as_str)
+                .collect::<Vec<_>>(),
+            ["A", "B_2"]
+        );
+        for (secrets, code) in [
+            (vec![], "secrets_none"),
+            (
+                (0..=MAX_SECRETS)
+                    .map(|n| secret(&format!("S{n}"), "v"))
+                    .collect(),
+                "too_many_secrets",
+            ),
+            (
+                vec![secret("A", "1"), secret("lower", "v")],
+                "invalid_secret_name",
+            ),
+            (vec![secret("PORT", "1")], "secret_name_reserved"),
+            (
+                vec![secret("A", "1"), secret("A", "2")],
+                "secret_name_repeated",
+            ),
+            (vec![secret("A", "")], "secret_value_empty"),
+            (
+                vec![secret("A", "not-a-real\0secret")],
+                "secret_value_invalid",
+            ),
+        ] {
+            let error = request(secrets).check().unwrap_err();
+            assert_eq!(error.code(), code, "{error}");
+            assert!(!error.to_string().contains("not-a-real"), "{error}");
+        }
+        let shown = format!("{:?}", request(vec![secret("A", "not-a-real-secret")]));
+        assert!(!shown.contains("not-a-real-secret"), "{shown}");
+        assert!(shown.contains('A'), "{shown}");
+        let json = serde_json::json!({ "secrets": [{"name": "A", "value": "1", "extra": 1}] });
+        assert!(serde_json::from_value::<SecretsRequest>(json).is_err());
     }
 }

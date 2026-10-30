@@ -22,7 +22,7 @@ const CONFIRM_DEADLINE: Duration = Duration::from_secs(60);
 
 /// What a deleted app leaves, and how to have it erased, which the question
 /// says before anything is deleted.
-const KEPT: &str = "its files and secrets stay on our servers, where nothing reaches them, until deleted apps are purged; to have them erased sooner, email michael@digitalcarbon.ai";
+const KEPT: &str = "its files and secrets stay on our servers, where nothing reaches them; to have them erased, email michael@digitalcarbon.ai";
 
 pub async fn delete(app: &str, yes: bool, output: &mut Output) -> Result<ResultData, CliError> {
     let app = AppRef::parse(app)?;

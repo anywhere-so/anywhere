@@ -21,12 +21,13 @@ manifest.workspace = true
 naming.workspace = true
 progenitor-client.workspace = true
 prost.workspace = true
-proto.workspace = true
+proto = { workspace = true, default-features = false }
 reqwest.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 tar.workspace = true
 thiserror.workspace = true
+# Use the same public app namespace rules as the gateway and control plane.
 tokio.workspace = true
 tokio-tungstenite.workspace = true
 uuid.workspace = true
