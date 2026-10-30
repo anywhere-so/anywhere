@@ -1,0 +1,5 @@
+title = "Fixed"
+port = 8080
+
+[processes]
+web = "node server.js"

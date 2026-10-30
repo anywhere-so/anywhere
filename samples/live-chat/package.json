@@ -1,0 +1,10 @@
+{
+  "name": "anywhere-live-chat",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "ws": "8.22.0"
+  },
+  "license": "Apache-2.0"
+}

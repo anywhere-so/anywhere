@@ -1,0 +1,58 @@
+[workspace]
+members = ["cli", "crates/*"]
+resolver = "3"
+[workspace.package]
+license = "Apache-2.0"
+edition = "2024"
+publish = false
+[workspace.dependencies]
+appspec = { path = "crates/appspec" }
+blake3 = "1.8.7"
+bytes = "1.12.1"
+chrono = { version = "0.4.45", default-features = false, features = ["serde", "std"] }
+clap = { version = "4.6.7", features = ["derive"] }
+control-api = { package = "anywhere-api-types", path = "crates/control-api" }
+futures-util = { version = "0.3.34", default-features = false, features = ["sink", "std"] }
+http = "1.5.0"
+http-body = "1.1.0"
+ignore = "0.4.33"
+manifest = { path = "crates/manifest" }
+naming = { path = "crates/naming" }
+openapiv3 = "2.2.0"
+progenitor = { version = "0.15.1", default-features = false }
+progenitor-client = "0.15.1"
+prost = "0.14.4"
+prost-build = "0.14.4"
+proto = { package = "anywhere-exec-protocol", path = "crates/proto" }
+rcgen = { version = "0.14.10", default-features = false, features = ["aws_lc_rs", "pem"] }
+reqwest = { version = "0.13.5", features = ["json"] }
+schemars = { version = "0.8.22", features = ["chrono", "uuid1"] }
+serde = { version = "1.0.229", features = ["derive"] }
+serde_json = "1.0.152"
+tar = { version = "0.4.46", default-features = false }
+tempfile = "3.27.0"
+thiserror = "2.0.21"
+tokio = { version = "1.53.3", features = ["fs", "io-util", "macros", "process", "rt-multi-thread", "signal", "sync", "time"] }
+tokio-tungstenite = { version = "0.30.0", default-features = false, features = ["handshake"] }
+tokio-util = { version = "0.7.20", features = ["rt"] }
+toml = "1.1.8"
+unicode-properties = { version = "0.1.4", default-features = false, features = ["general-category"] }
+uuid = { version = "1.28.0", features = ["serde", "v7"] }
+zstd = { version = "0.14.2", default-features = false }
+[workspace.lints.rust]
+# `unsafe` needs an `allow` that gives its reason, plus a `// SAFETY:` comment.
+unsafe_code = "deny"
+
+[workspace.lints.clippy]
+# No swallowed errors, and every suppression gives its reason (AGENTS.md, "Code").
+let_underscore_must_use = "deny"
+unused_result_ok = "deny"
+allow_attributes_without_reason = "deny"
+# No panics outside tests; clippy.toml allows them in tests.
+unwrap_used = "deny"
+expect_used = "deny"
+panic = "deny"
+todo = "deny"
+unimplemented = "deny"
+dbg_macro = "deny"
+undocumented_unsafe_blocks = "deny"

@@ -1,0 +1,71 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Live chat · Anywhere</title>
+    <style>
+      :root { color-scheme: light dark; font: 17px/1.5 system-ui, sans-serif; }
+      body { max-width: 42rem; margin: 3rem auto; padding: 0 1.25rem; }
+      h1 { margin-bottom: .25rem; } p { margin-top: 0; }
+      #status { color: #777; } ol { min-height: 16rem; padding: 0; list-style: none; }
+      li { margin: 1rem 0; padding-bottom: 1rem; border-bottom: 1px solid #8884; }
+      li strong { display: block; font-size: .8rem; } li span { white-space: pre-wrap; overflow-wrap: anywhere; }
+      form { display: flex; gap: .5rem; } input, button { font: inherit; padding: .6rem; }
+      input { flex: 1; min-width: 0; } label { display: block; margin-bottom: .4rem; }
+    </style>
+  </head>
+  <body>
+    <h1>Live chat</h1>
+    <p>Share this app with someone and talk here together.</p>
+    <p id="status" role="status">Connecting…</p>
+    <ol id="messages" aria-label="Messages" aria-live="polite"></ol>
+    <label for="message">Message</label>
+    <form>
+      <input id="message" name="message" maxlength="1000" required autocomplete="off" disabled>
+      <button disabled>Send</button>
+    </form>
+    <script type="module">
+      const status = document.querySelector("#status");
+      const messages = document.querySelector("#messages");
+      const form = document.querySelector("form");
+      const input = document.querySelector("input");
+      const button = document.querySelector("button");
+      const url = new URL("/live", location.href);
+      url.protocol = "wss:";
+      const socket = new WebSocket(url);
+      function show(message) {
+        const item = document.createElement("li");
+        const user = document.createElement("strong");
+        user.textContent = message.username;
+        const text = document.createElement("span");
+        text.textContent = message.text;
+        item.append(user, text);
+        messages.append(item);
+        while (messages.children.length > 100) messages.firstElementChild.remove();
+      }
+      socket.addEventListener("message", (event) => {
+        const value = JSON.parse(event.data);
+        if (value.type === "history") {
+          messages.replaceChildren();
+          value.messages.forEach(show);
+          status.textContent = `Connected as ${value.username}`;
+          input.disabled = button.disabled = false;
+        } else if (value.type === "message") show(value.message);
+      });
+      socket.addEventListener("close", () => {
+        status.textContent = "Disconnected. Reopen the app to sign in and reconnect.";
+        input.disabled = button.disabled = true;
+      });
+      socket.addEventListener("error", () => { status.textContent = "Could not connect. Reopen the app."; });
+      form.addEventListener("submit", (event) => {
+        event.preventDefault();
+        if (socket.readyState === WebSocket.OPEN && input.value.trim()) {
+          socket.send(input.value);
+          input.value = "";
+          input.focus();
+        }
+      });
+    </script>
+  </body>
+</html>

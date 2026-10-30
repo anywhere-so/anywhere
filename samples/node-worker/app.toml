@@ -1,0 +1,4 @@
+title = "Node background app"
+
+[processes]
+worker = "node worker.js"

@@ -1,0 +1,4 @@
+# A failing test should stop at once, so tests may unwrap, expect and panic.
+allow-unwrap-in-tests = true
+allow-expect-in-tests = true
+allow-panic-in-tests = true

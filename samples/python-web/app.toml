@@ -1,0 +1,4 @@
+title = "Python web app"
+
+[processes]
+web = "python3 app.py"

@@ -1,0 +1,11 @@
+# Fuzzing only, loaded on top of mise.toml when MISE_ENV=fuzz, as `just fuzz`
+# sets it. cargo-fuzz needs nightly for its sanitizer flags, so this pins one
+# dated nightly for fuzzing alone; everything else builds with the stable
+# toolchain mise.toml pins.
+
+[tools]
+rust = { version = "nightly-2026-09-29", components = "clippy,rustfmt" }
+# Built from source with its published lockfile, since its releases have no
+# binary for arm64 Macs, by the nightly above, which fuzzing always has:
+# change the two nightlies together.
+"cargo:cargo-fuzz" = { version = "0.13.2", install_env = { RUSTUP_TOOLCHAIN = "nightly-2026-09-29" } }

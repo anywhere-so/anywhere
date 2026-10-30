@@ -1,0 +1,1754 @@
+{
+  "components": {
+    "schemas": {
+      "AppList": {
+        "properties": {
+          "apps": {
+            "items": {
+              "$ref": "#/components/schemas/App"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "apps"
+        ],
+        "type": "object"
+      },
+      "App": {
+        "properties": {
+          "deployed_at": {
+            "description": "When its newest deploy started. None until it has had one.",
+            "format": "date-time",
+            "nullable": true,
+            "type": "string"
+          },
+          "name": {
+            "description": "The app's name, which is its folder's name.",
+            "type": "string"
+          },
+          "resources": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/Resources"
+              }
+            ],
+            "description": "The resources its `app.toml` asks for."
+          },
+          "restarts": {
+            "description": "How many times its host has restarted it, after it exited by itself, since the platform last started it, as a deploy or a change to its secrets does.",
+            "format": "uint32",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "running": {
+            "description": "Whether the app runs: its status is `running`.",
+            "type": "boolean"
+          },
+          "status": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/AppStatus"
+              }
+            ],
+            "description": "How the app is doing, as its host reports it."
+          },
+          "title": {
+            "description": "The title its `app.toml` gives, shown on the home screen.",
+            "type": "string"
+          },
+          "url": {
+            "description": "Where the app opens. None for a background app, which has no web address.",
+            "nullable": true,
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "resources",
+          "restarts",
+          "running",
+          "status",
+          "title"
+        ],
+        "type": "object"
+      },
+      "Resources": {
+        "additionalProperties": false,
+        "properties": {
+          "disk_gib": {
+            "default": 10,
+            "description": "Persistent disk quota in GiB, independent of compute. Defaults to 10.",
+            "format": "uint64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "size": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/Size"
+              }
+            ],
+            "default": "small",
+            "description": "Shared CPUs and the memory limit; small, the default, is 1 vCPU and 2 GiB."
+          }
+        },
+        "type": "object"
+      },
+      "Size": {
+        "enum": [
+          "small",
+          "medium",
+          "large",
+          "xl"
+        ],
+        "type": "string"
+      },
+      "AppStatus": {
+        "description": "How an app is doing. Its host restarts it whenever it exits, waiting a second, then twice as long after each crash in a row, up to a minute, and gives up after 10 crashes in a row with no run lasting 10 minutes.",
+        "oneOf": [
+          {
+            "description": "The platform is starting it: its deploy, or the change to its secrets, is still under way, or its host hasn't reported it yet.",
+            "enum": [
+              "starting"
+            ],
+            "type": "string"
+          },
+          {
+            "description": "It runs.",
+            "enum": [
+              "running"
+            ],
+            "type": "string"
+          },
+          {
+            "description": "It exited, and its host starts it again after its wait.",
+            "enum": [
+              "restarting"
+            ],
+            "type": "string"
+          },
+          {
+            "description": "It exited 10 times in a row, so its host stopped restarting it. It stays so until its next deploy or change to its secrets. Its logs say why it exited, and `anywhere exec` still works in it, to repair it.",
+            "enum": [
+              "crashed"
+            ],
+            "type": "string"
+          },
+          {
+            "description": "It isn't meant to run: it hasn't been deployed yet, or it was stopped.",
+            "enum": [
+              "stopped"
+            ],
+            "type": "string"
+          }
+        ]
+      },
+      "Error": {
+        "$ref": "#/components/schemas/ErrorBody"
+      },
+      "ErrorBody": {
+        "description": "The body of every error: what went wrong, how to fix it, and whether trying the same request again later could work.",
+        "properties": {
+          "code": {
+            "description": "A stable code, such as `invalid_app_name`, that callers can match on.",
+            "type": "string"
+          },
+          "message": {
+            "description": "What went wrong and how to fix it.",
+            "type": "string"
+          },
+          "retryable": {
+            "description": "Whether sending the same request again later is safe and could work.",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "code",
+          "message",
+          "retryable"
+        ],
+        "type": "object"
+      },
+      "Operation": {
+        "description": "A change the platform is making, and how far it has got.",
+        "properties": {
+          "error": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/ErrorBody"
+              }
+            ],
+            "description": "For an operation that failed: why, and how to fix it.",
+            "nullable": true
+          },
+          "id": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "kind": {
+            "$ref": "#/components/schemas/OperationKind"
+          },
+          "progress": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/Progress"
+              }
+            ],
+            "description": "For a deploy: the step it's on, or, once it has ended, the step it ended in.",
+            "nullable": true
+          },
+          "state": {
+            "$ref": "#/components/schemas/OperationState"
+          },
+          "upload": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/Upload"
+              }
+            ],
+            "description": "For a deploy that's waiting for its files: where to upload them, and which.",
+            "nullable": true
+          },
+          "url": {
+            "description": "For a deploy of a web app that succeeded: where the app now opens. A background app has no web address, so its deploy gives none.",
+            "nullable": true,
+            "type": "string"
+          },
+          "warning": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/Warning"
+              }
+            ],
+            "description": "For a secret change that succeeded on a web app with no address yet: why, and what gives it one. For a share that makes someone a developer: what a developer can do that removing them won't undo. For a deploy that makes its app smaller, `app_size_lowered`: what to set to keep its size.",
+            "nullable": true
+          }
+        },
+        "required": [
+          "id",
+          "kind",
+          "state"
+        ],
+        "type": "object"
+      },
+      "OperationKind": {
+        "oneOf": [
+          {
+            "enum": [
+              "deploy"
+            ],
+            "type": "string"
+          },
+          {
+            "description": "Revocation: the gateways and the control plane stop serving the credential and drain every stream it opened.",
+            "enum": [
+              "credential_revoke"
+            ],
+            "type": "string"
+          },
+          {
+            "description": "Deletes an app; it succeeds once its host has stopped it and every gateway has dropped its address and shares.",
+            "enum": [
+              "app_delete"
+            ],
+            "type": "string"
+          },
+          {
+            "description": "Sets one of an app's secrets, restarting the app if it's running.",
+            "enum": [
+              "secret_set"
+            ],
+            "type": "string"
+          },
+          {
+            "description": "Removes one of an app's secrets, restarting the app if it's running.",
+            "enum": [
+              "secret_unset"
+            ],
+            "type": "string"
+          },
+          {
+            "description": "Shares an app with someone; it succeeds once every gateway admits them.",
+            "enum": [
+              "share_add"
+            ],
+            "type": "string"
+          },
+          {
+            "description": "Stops sharing an app with someone; it succeeds once every gateway has closed their requests to it.",
+            "enum": [
+              "share_remove"
+            ],
+            "type": "string"
+          },
+          {
+            "description": "Changes what a share lets its person do; it succeeds once every gateway admits them as their new role says.",
+            "enum": [
+              "share_change"
+            ],
+            "type": "string"
+          }
+        ]
+      },
+      "Progress": {
+        "description": "How far a deploy has got.",
+        "properties": {
+          "step": {
+            "$ref": "#/components/schemas/DeployStep"
+          }
+        },
+        "required": [
+          "step"
+        ],
+        "type": "object"
+      },
+      "DeployStep": {
+        "description": "The steps of a deploy, in order. The host doesn't say when the upload ends and the build starts, so both are `uploading`.",
+        "oneOf": [
+          {
+            "description": "Waiting for its files, writing them into `/app`, or running the app's build step there.",
+            "enum": [
+              "uploading"
+            ],
+            "type": "string"
+          },
+          {
+            "description": "Starting the app, and checking it started.",
+            "enum": [
+              "starting"
+            ],
+            "type": "string"
+          }
+        ]
+      },
+      "OperationState": {
+        "oneOf": [
+          {
+            "enum": [
+              "running",
+              "succeeded",
+              "failed"
+            ],
+            "type": "string"
+          },
+          {
+            "description": "Waiting to start, or waiting for something from you, such as files.",
+            "enum": [
+              "pending"
+            ],
+            "type": "string"
+          }
+        ]
+      },
+      "Upload": {
+        "description": "Where to upload a deploy's files.",
+        "properties": {
+          "missing": {
+            "description": "The hashes of the files to send: every file the deploy lists, each contents once.",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "path": {
+            "description": "Native clients resolve this exact operation path against their configured private HTTPS API origin and authenticate each PUT. They never attach credentials to `url` or follow redirects.",
+            "nullable": true,
+            "type": "string"
+          },
+          "url": {
+            "description": "Send the files here, in as many `PUT`s as they need. Each body is a tar stream compressed with zstd, of at most 30 MiB of files: regular files only, each named by its hash, with no folders. Each answer says how many files are still missing, and errors have the usual error body.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "missing",
+          "url"
+        ],
+        "type": "object"
+      },
+      "Warning": {
+        "description": "Something a change that succeeded leaves for you to do.",
+        "properties": {
+          "code": {
+            "description": "Stable, for matching on, as an error's code is.",
+            "type": "string"
+          },
+          "message": {
+            "description": "What's left, and how to do it.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "code",
+          "message"
+        ],
+        "type": "object"
+      },
+      "AppDetails": {
+        "description": "One app, with its newest deploys, at most 20, newest first.",
+        "properties": {
+          "app": {
+            "$ref": "#/components/schemas/App"
+          },
+          "deploys": {
+            "items": {
+              "$ref": "#/components/schemas/Deploy"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "app",
+          "deploys"
+        ],
+        "type": "object"
+      },
+      "Deploy": {
+        "description": "A deploy of an app: the operation that writes its files, builds it and starts it.",
+        "properties": {
+          "by": {
+            "description": "The username of who started it: the app's owner, or one of its developers.",
+            "type": "string"
+          },
+          "ended_at": {
+            "description": "For a deploy that succeeded or failed: when it did.",
+            "format": "date-time",
+            "nullable": true,
+            "type": "string"
+          },
+          "error": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/ErrorBody"
+              }
+            ],
+            "description": "For a deploy that failed: why, and how to fix it.",
+            "nullable": true
+          },
+          "operation": {
+            "description": "Its operation, which `GET /v1/operations/{operation}` shows too.",
+            "format": "uuid",
+            "type": "string"
+          },
+          "started_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "state": {
+            "$ref": "#/components/schemas/OperationState"
+          }
+        },
+        "required": [
+          "by",
+          "operation",
+          "started_at",
+          "state"
+        ],
+        "type": "object"
+      },
+      "DeployRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "files": {
+            "description": "Every file the deploy writes into `/app`, each of which is uploaded.",
+            "items": {
+              "$ref": "#/components/schemas/FileEntry"
+            },
+            "type": "array"
+          },
+          "spec": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/AppSpec"
+              }
+            ],
+            "description": "The app's `app.toml`, as read by the caller. The control plane checks it again."
+          }
+        },
+        "required": [
+          "files",
+          "spec"
+        ],
+        "type": "object"
+      },
+      "FileEntry": {
+        "additionalProperties": false,
+        "description": "One file a deploy writes.",
+        "properties": {
+          "executable": {
+            "description": "Whether it can be run as a program.",
+            "type": "boolean"
+          },
+          "hash": {
+            "description": "The BLAKE3 hash of its contents, in lowercase hex.",
+            "type": "string"
+          },
+          "path": {
+            "description": "Its path inside the app's folder, and inside `/app`, with `/` between folders, such as `src/main.py`.",
+            "type": "string"
+          },
+          "size": {
+            "description": "Its size in bytes.",
+            "format": "uint64",
+            "minimum": 0,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "executable",
+          "hash",
+          "path",
+          "size"
+        ],
+        "type": "object"
+      },
+      "AppSpec": {
+        "additionalProperties": false,
+        "description": "What an app is, as its `app.toml` says.",
+        "properties": {
+          "build": {
+            "description": "The build step, run by a shell in `/app` on the app's own disk at every deploy, once the deploy's files are written, such as `npm run build`.",
+            "nullable": true,
+            "type": "string"
+          },
+          "port": {
+            "description": "A fixed port, for a web app whose software can't read `$PORT`. A background app has none.",
+            "format": "uint16",
+            "minimum": 0,
+            "nullable": true,
+            "type": "integer"
+          },
+          "processes": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/Processes"
+              }
+            ],
+            "description": "The app's one command. A static site has none, and leaves this out."
+          },
+          "resources": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/Resources"
+              }
+            ],
+            "description": "CPU, memory and persistent disk for builds, the app and exec commands."
+          },
+          "static": {
+            "description": "For a static site, the folder its files are in, by its path in the app's folder, such as `public`, or `dist` for one its build step makes. The platform's helper serves them at the app's address, as a web app.",
+            "nullable": true,
+            "type": "string"
+          },
+          "title": {
+            "description": "Shown on the home screen. The app's address comes from its folder's name.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "title"
+        ],
+        "type": "object"
+      },
+      "Processes": {
+        "additionalProperties": false,
+        "description": "The app's one command: `web` or `worker`, never both, or neither for a static site.",
+        "properties": {
+          "web": {
+            "description": "A web app's command, which serves the app's address, run by a shell with `$PORT` set.",
+            "nullable": true,
+            "type": "string"
+          },
+          "worker": {
+            "description": "A background app's command, run by a shell, with no port and no web address. It must keep running: one that exits within 3 seconds of starting fails its deploy.",
+            "nullable": true,
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "SecretList": {
+        "description": "The names of an app's secrets, in order, without their values.",
+        "properties": {
+          "names": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "names"
+        ],
+        "type": "object"
+      },
+      "SecretRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "create_app": {
+            "default": false,
+            "description": "Whether to make the app, stopped and never deployed, if you have none of that name, so its first deploy starts it with this secret. Without it, a name you don't have is `no_such_app`, so a mistyped one makes nothing.",
+            "type": "boolean"
+          },
+          "value": {
+            "description": "The secret's value: UTF-8 text of 1 to 32768 bytes, without NUL characters. It's kept exactly as sent, so a newline at its end is part of it.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "value"
+        ],
+        "type": "object"
+      },
+      "ShareList": {
+        "description": "The people an app is shared with.",
+        "properties": {
+          "shares": {
+            "items": {
+              "$ref": "#/components/schemas/Share"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "shares"
+        ],
+        "type": "object"
+      },
+      "Share": {
+        "properties": {
+          "created_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "email": {
+            "description": "The email it's shared with, lowercased.",
+            "type": "string"
+          },
+          "role": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/ShareRole"
+              }
+            ],
+            "description": "What the share lets its person do."
+          },
+          "username": {
+            "description": "The account that holds the email, or null until someone signs up with it.",
+            "nullable": true,
+            "type": "string"
+          }
+        },
+        "required": [
+          "created_at",
+          "email",
+          "role"
+        ],
+        "type": "object"
+      },
+      "ShareRole": {
+        "description": "What a share lets its person do with the app.",
+        "oneOf": [
+          {
+            "description": "Uses the app, in a browser or with an agent token; what they may do in it is the app's to decide.",
+            "enum": [
+              "member"
+            ],
+            "type": "string"
+          },
+          {
+            "description": "Also deploys to it, runs commands in it, reads its logs and sets its secrets; never shares it.",
+            "enum": [
+              "developer"
+            ],
+            "type": "string"
+          }
+        ]
+      },
+      "ShareAddRequest": {
+        "additionalProperties": false,
+        "description": "Whom to share an app with, and what their share lets them do.",
+        "properties": {
+          "email": {
+            "description": "Their verified email, which matches without regard to ASCII case.",
+            "type": "string"
+          },
+          "role": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/ShareRole"
+              }
+            ],
+            "description": "What they may do: a new share without one is a member's, and an existing one keeps its role.",
+            "nullable": true
+          }
+        },
+        "required": [
+          "email"
+        ],
+        "type": "object"
+      },
+      "ShareRequest": {
+        "additionalProperties": false,
+        "description": "Whom to stop sharing an app with.",
+        "properties": {
+          "email": {
+            "description": "Their verified email, which matches without regard to ASCII case.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "email"
+        ],
+        "type": "object"
+      },
+      "TicketRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "service": {
+            "$ref": "#/components/schemas/TicketService"
+          }
+        },
+        "required": [
+          "service"
+        ],
+        "type": "object"
+      },
+      "TicketService": {
+        "description": "What an app ticket opens.",
+        "oneOf": [
+          {
+            "description": "Running a command in the app's sandbox with `anywhere exec`.",
+            "enum": [
+              "exec"
+            ],
+            "type": "string"
+          }
+        ]
+      },
+      "Ticket": {
+        "description": "A ticket for one of your apps, or one you're a developer of.",
+        "properties": {
+          "address": {
+            "description": "The app's address, `<owner>-<app>`, which the service's path names, such as `/v1/apps/{address}/exec`.",
+            "type": "string"
+          },
+          "expires_at": {
+            "description": "When it stops working. Get a new one before then.",
+            "format": "date-time",
+            "type": "string"
+          },
+          "ticket": {
+            "description": "Send this in an `Anywhere-Ticket` header, exactly as it is.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "address",
+          "expires_at",
+          "ticket"
+        ],
+        "type": "object"
+      },
+      "Me": {
+        "description": "Who's signed in, their plan and how much of it their apps use.",
+        "properties": {
+          "apps": {
+            "description": "How many apps the account has: those `GET /v1/apps` lists, which `limits.apps` caps.",
+            "format": "uint32",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "billing": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/Billing"
+              }
+            ],
+            "description": "Whether Pro can be bought here, and managed."
+          },
+          "limits": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/PlanLimits"
+              }
+            ],
+            "description": "What the plan allows."
+          },
+          "plan": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/Plan"
+              }
+            ],
+            "description": "The plan the account is on."
+          },
+          "username": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "apps",
+          "billing",
+          "limits",
+          "plan",
+          "username"
+        ],
+        "type": "object"
+      },
+      "Billing": {
+        "description": "Whether the account can buy Pro, and manage what it pays.",
+        "properties": {
+          "available": {
+            "description": "Whether this platform sells Pro, through Stripe. A platform without billing set up, such as a test one, doesn't.",
+            "type": "boolean"
+          },
+          "customer": {
+            "description": "Whether the account has paid through Stripe, so Stripe's billing page (`POST /v1/billing/portal`) can show and cancel what it pays.",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "available",
+          "customer"
+        ],
+        "type": "object"
+      },
+      "PlanLimits": {
+        "description": "What a plan allows. A deploy or a new app that asks for more is refused with `plan_app_limit`, `plan_size_unavailable` or `plan_disk_limit`, while what an app already has is never taken away.",
+        "properties": {
+          "app_disk_gib": {
+            "description": "The most disk each app may have, in GiB, on a plan that limits each app's, as Free does.",
+            "format": "uint64",
+            "minimum": 0,
+            "nullable": true,
+            "type": "integer"
+          },
+          "apps": {
+            "description": "The most apps the account may have.",
+            "format": "uint32",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "largest_size": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/Size"
+              }
+            ],
+            "description": "The largest size an app may have."
+          },
+          "total_disk_gib": {
+            "description": "The most disk the account's apps may have together, in GiB, on a plan that limits their total, as Pro does.",
+            "format": "uint64",
+            "minimum": 0,
+            "nullable": true,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "apps",
+          "largest_size"
+        ],
+        "type": "object"
+      },
+      "Plan": {
+        "description": "An account's plan, which limits its apps (`PlanLimits`).",
+        "enum": [
+          "free",
+          "pro"
+        ],
+        "type": "string"
+      },
+      "SharedAppList": {
+        "description": "The apps shared with you.",
+        "properties": {
+          "apps": {
+            "items": {
+              "$ref": "#/components/schemas/SharedApp"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "apps"
+        ],
+        "type": "object"
+      },
+      "SharedApp": {
+        "properties": {
+          "name": {
+            "description": "The app's name.",
+            "type": "string"
+          },
+          "owner": {
+            "description": "The owner's username.",
+            "type": "string"
+          },
+          "role": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/ShareRole"
+              }
+            ],
+            "description": "What you may do with it."
+          },
+          "url": {
+            "description": "Where it answers.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "owner",
+          "role",
+          "url"
+        ],
+        "type": "object"
+      },
+      "CliLoginRequest": {
+        "additionalProperties": false,
+        "description": "What `anywhere login` sends to start: the machine it runs on.",
+        "properties": {
+          "machine": {
+            "description": "The machine's name, shown to the person who approves the login and kept as the token's label: 1 to 64 characters, with no control or format characters, such as bidi overrides or zero-width ones, and no space at either end.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "machine"
+        ],
+        "type": "object"
+      },
+      "CliLoginStarted": {
+        "description": "A CLI login that waits for a person to approve it.",
+        "properties": {
+          "approve_url": {
+            "description": "The one link the person opens to approve the login: the portal's `/cli-login` page with the user code in its fragment, `#code=BCDF-GHJK`, which browsers never send to a server. The page asks them to sign in if they need to, shows the machine and the code, and approves only when they press Approve.",
+            "type": "string"
+          },
+          "device_code": {
+            "description": "The CLI's secret, which collects the token from `POST /v2/cli-logins/token` once the login is approved. Only the CLI that started the login holds it; never show it.",
+            "type": "string"
+          },
+          "expires_at": {
+            "description": "When the login ends unless its token was collected, 10 minutes after it started.",
+            "format": "date-time",
+            "type": "string"
+          },
+          "interval_seconds": {
+            "description": "How long to wait between asks for the token.",
+            "format": "uint32",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "user_code": {
+            "description": "The code the person checks in the portal, such as `BCDF-GHJK`.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "approve_url",
+          "device_code",
+          "expires_at",
+          "interval_seconds",
+          "user_code"
+        ],
+        "type": "object"
+      },
+      "CliLoginTokenRequest": {
+        "additionalProperties": false,
+        "description": "What the CLI sends to collect its token.",
+        "properties": {
+          "device_code": {
+            "description": "The device code from the answer that started the login.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "device_code"
+        ],
+        "type": "object"
+      },
+      "AgentTokenCreated": {
+        "description": "A new agent token, with its secret, which no other answer gives.",
+        "properties": {
+          "expires_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "token": {
+            "description": "The secret, for `ANYWHERE_TOKEN`.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "expires_at",
+          "id",
+          "token"
+        ],
+        "type": "object"
+      }
+    },
+    "responses": {
+      "Error": {
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/Error"
+            }
+          }
+        },
+        "description": "Error"
+      }
+    }
+  },
+  "info": {
+    "description": "Contract 2. The `anywhere` CLI says so in every request's User-Agent, `anywhere/<version> (contract 2)`, and the gateway refuses a CLI built for another contract, or one from before them (`anywhere/<version>` alone), with 400 `cli_outdated` before the request reaches this API, whatever its route or body. Its message says how to install the CLI this platform serves. Other clients are told nothing.",
+    "title": "Control API",
+    "version": "0.1.0"
+  },
+  "openapi": "3.0.3",
+  "paths": {
+    "/v1/apps": {
+      "get": {
+        "operationId": "app_list",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppList"
+                }
+              }
+            },
+            "description": "successful operation"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "summary": "Lists your apps."
+      }
+    },
+    "/v1/apps/{app}": {
+      "delete": {
+        "description": "Only its owner deletes it: a developer of it gets `owner_only`, and a member `member_only`. Its address, every share of it and its name go at once, so a deploy by that name makes a new app, with an empty disk. The operation succeeds once its host has stopped it and every gateway has dropped its address and shares and closed what was open to it. There's no trash and nothing restores it. While a deploy of it is under way, it's `app_busy`. Once it's deleted, sending it again answers `no_such_app`.",
+        "operationId": "app_delete",
+        "parameters": [
+          {
+            "description": "The app's name, which is its folder's name.",
+            "in": "path",
+            "name": "app",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "The username of the app's owner, for an app whose owner made you a developer. Without it, the app is yours.",
+            "in": "query",
+            "name": "owner",
+            "schema": {
+              "nullable": true,
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Operation"
+                }
+              }
+            },
+            "description": "successfully enqueued operation"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "summary": "Deletes one of your apps."
+      },
+      "get": {
+        "description": "The list holds at most the 20 newest, newest first, each naming who started it. A deploy that failed says why, and how to fix it.",
+        "operationId": "app_view",
+        "parameters": [
+          {
+            "description": "The app's name, which is its folder's name.",
+            "in": "path",
+            "name": "app",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "The username of the app's owner, for an app whose owner made you a developer. Without it, the app is yours.",
+            "in": "query",
+            "name": "owner",
+            "schema": {
+              "nullable": true,
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppDetails"
+                }
+              }
+            },
+            "description": "successful operation"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "summary": "One of your apps, or one you're a developer of, with its newest deploys."
+      }
+    },
+    "/v1/apps/{app}/deploys": {
+      "post": {
+        "description": "It takes the app's `app.toml` and the list of its files. The deploy runs in the background: check its operation, and upload every file when it asks. It writes each file at `/app/<path>` on the app's disk, replacing what's there and touching nothing else, runs the app's build there, and then starts the app on what its disk holds, even if the build failed. Without `owner`, a deploy makes your app if you have none by its name; with it, the app must be one you're a developer of.",
+        "operationId": "deploy_create",
+        "parameters": [
+          {
+            "description": "The app's name, which is its folder's name.",
+            "in": "path",
+            "name": "app",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "The username of the app's owner, for an app whose owner made you a developer. Without it, the app is yours.",
+            "in": "query",
+            "name": "owner",
+            "schema": {
+              "nullable": true,
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DeployRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Operation"
+                }
+              }
+            },
+            "description": "successfully enqueued operation"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "summary": "Starts deploying an app."
+      }
+    },
+    "/v1/apps/{app}/logs": {
+      "get": {
+        "description": "It's what the app printed in its latest run and the run before, each at most its newest 1 MiB, with what its deploys and builds printed, and timed lines of the platform's own, starting `[anywhere `, saying when each run, deploy and build started and ended. With `follow`, the answer goes on with what the app prints next, through its restarts and deploys, until the caller closes it. The bytes are as the app printed them, control characters and all, as `application/octet-stream`.",
+        "operationId": "app_logs",
+        "parameters": [
+          {
+            "description": "The app's name, which is its folder's name.",
+            "in": "path",
+            "name": "app",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Whether to go on with what the app prints next.",
+            "in": "query",
+            "name": "follow",
+            "schema": {
+              "nullable": true,
+              "type": "boolean"
+            }
+          },
+          {
+            "description": "The username of the app's owner, for an app whose owner made you a developer. Without it, the app is yours.",
+            "in": "query",
+            "name": "owner",
+            "schema": {
+              "nullable": true,
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "default": {
+            "content": {
+              "*/*": {
+                "schema": {}
+              }
+            },
+            "description": ""
+          }
+        },
+        "summary": "An app's output."
+      }
+    },
+    "/v1/apps/{app}/secrets": {
+      "get": {
+        "operationId": "secret_list",
+        "parameters": [
+          {
+            "description": "The app's name, which is its folder's name.",
+            "in": "path",
+            "name": "app",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "The username of the app's owner, for an app whose owner made you a developer. Without it, the app is yours.",
+            "in": "query",
+            "name": "owner",
+            "schema": {
+              "nullable": true,
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SecretList"
+                }
+              }
+            },
+            "description": "successful operation"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "summary": "The names of an app's secrets, in order. Their values never come back."
+      }
+    },
+    "/v1/apps/{app}/secrets/{name}": {
+      "delete": {
+        "description": "A running app restarts without it, and the operation succeeds once it has started again. Sending it again is safe: once the secret is gone, the answer is `no_such_secret`.",
+        "operationId": "secret_unset",
+        "parameters": [
+          {
+            "description": "The app's name, which is its folder's name.",
+            "in": "path",
+            "name": "app",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "The secret's name, which is the environment variable the app reads it from, such as `API_KEY`.",
+            "in": "path",
+            "name": "name",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "The username of the app's owner, for an app whose owner made you a developer. Without it, the app is yours.",
+            "in": "query",
+            "name": "owner",
+            "schema": {
+              "nullable": true,
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Operation"
+                }
+              }
+            },
+            "description": "successfully enqueued operation"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "summary": "Removes one of an app's secrets."
+      },
+      "put": {
+        "description": "The app gets it as an environment variable of the same name. The name is an uppercase letter, then uppercase letters, digits and underscores, at most 64 characters. It can't be one the platform sets, HOME, PATH or PORT, or start with ANYWHERE_, which the platform keeps for its own. The value is UTF-8 text of 1 to 32768 bytes, without NUL characters, kept exactly as sent, in a request of at most 65536 bytes. An app has at most 100 secrets, of at most 1048576 bytes together, names and values. A running app restarts with its new secrets, and the operation succeeds once it has started again, as a deploy's does; an app that isn't running gets them when it next starts. An app you don't have is `no_such_app`, unless the request sets `create_app`, which makes only an app of your own, never with `owner`. A change to a web app that has no address yet succeeds with a warning that says how to give it one. Sending the same request again is safe, and restarts a running app once more.",
+        "operationId": "secret_set",
+        "parameters": [
+          {
+            "description": "The app's name, which is its folder's name.",
+            "in": "path",
+            "name": "app",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "The secret's name, which is the environment variable the app reads it from, such as `API_KEY`.",
+            "in": "path",
+            "name": "name",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "The username of the app's owner, for an app whose owner made you a developer. Without it, the app is yours.",
+            "in": "query",
+            "name": "owner",
+            "schema": {
+              "nullable": true,
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SecretRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Operation"
+                }
+              }
+            },
+            "description": "successfully enqueued operation"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "summary": "Sets one of an app's secrets."
+      }
+    },
+    "/v1/apps/{app}/shares": {
+      "get": {
+        "description": "`username` is the account that holds the email, or null while the share waits for its person to sign up. Only the app's owner sees this.",
+        "operationId": "share_list",
+        "parameters": [
+          {
+            "description": "The app's name, which is its folder's name.",
+            "in": "path",
+            "name": "app",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ShareList"
+                }
+              }
+            },
+            "description": "successful operation"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "summary": "The people one of your apps is shared with, by email, oldest first."
+      },
+      "put": {
+        "description": "The share names their verified email. A member uses it in their browser or with their agent token, as you do, and finds it in `GET /v1/shared-apps`. A developer can also deploy to it, run commands in it, read its logs and set its secrets, naming it with `owner`; only you share it. The app is told their username in the `Anywhere-User` header, and their role in `Anywhere-Role`, where you get `owner`. Someone with no account yet gets the app once they sign up with that email, and can be made a developer only once they have (`developer_needs_account`). Without `role`, a new share is a member's and an existing one keeps its role; another role changes it. An operation that makes someone a developer warns that developers read the app's secrets and that removing one doesn't undo what they changed. The operation succeeds once every gateway admits them as their role says, and, for a change to member, has closed what needed a developer. Sending it again is safe. The email goes in the body, never the path, so no request log holds it.",
+        "operationId": "share_add",
+        "parameters": [
+          {
+            "description": "The app's name, which is its folder's name.",
+            "in": "path",
+            "name": "app",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ShareAddRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Operation"
+                }
+              }
+            },
+            "description": "successfully enqueued operation"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "summary": "Shares one of your apps with someone, or changes their role."
+      }
+    },
+    "/v1/apps/{app}/shares/remove": {
+      "post": {
+        "description": "The operation succeeds once every gateway, and the control plane, has closed everything the person had open to the app, its exec commands, uploads and log follows included, and refuses them; a deploy of theirs still under way fails soon after. Once the share is gone, sending it again answers `no_such_share`.",
+        "operationId": "share_remove",
+        "parameters": [
+          {
+            "description": "The app's name, which is its folder's name.",
+            "in": "path",
+            "name": "app",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ShareRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Operation"
+                }
+              }
+            },
+            "description": "successfully enqueued operation"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "summary": "Stops sharing one of your apps with an email."
+      }
+    },
+    "/v1/apps/{app}/tickets": {
+      "post": {
+        "description": "The app is yours, or one you're a developer of. For `exec`, it opens a WebSocket to run a command in the app's running sandbox (`wss://<platform>/v1/apps/{address}/exec`, with the app's `address` that the answer gives, and the ticket in an `Anywhere-Ticket` header), and lasts 60 seconds. It works only on requests that sign in as this one did, with the same bearer token, and returns no operation. A developer's works only while they still are one.",
+        "operationId": "app_ticket_create",
+        "parameters": [
+          {
+            "description": "The app's name, which is its folder's name.",
+            "in": "path",
+            "name": "app",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "The username of the app's owner, for an app whose owner made you a developer. Without it, the app is yours.",
+            "in": "query",
+            "name": "owner",
+            "schema": {
+              "nullable": true,
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TicketRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Ticket"
+                }
+              }
+            },
+            "description": "successful creation"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "summary": "A ticket that opens a service of an app through the gateway."
+      }
+    },
+    "/v1/me": {
+      "get": {
+        "description": "The plan's limits, and how many apps they have, which it caps.",
+        "operationId": "me_view",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Me"
+                }
+              }
+            },
+            "description": "successful operation",
+            "headers": {
+              "cache-control": {
+                "required": true,
+                "schema": {
+                  "type": "string"
+                },
+                "style": "simple"
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "summary": "Who's signed in, and their plan."
+      }
+    },
+    "/v1/operations/{operation}": {
+      "get": {
+        "operationId": "operation_view",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "operation",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Operation"
+                }
+              }
+            },
+            "description": "successful operation"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "summary": "An operation's progress. Every change returns one."
+      }
+    },
+    "/v1/shared-apps": {
+      "get": {
+        "description": "Each says what you may do with it: open it, or change it too.",
+        "operationId": "shared_app_list",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SharedAppList"
+                }
+              }
+            },
+            "description": "successful operation"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "summary": "The apps others have shared with you, by owner and name."
+      }
+    },
+    "/v2/cli-logins": {
+      "post": {
+        "description": "minutes for a person to approve it in the portal, at `approve_url`, where they type its `user_code`. Only the CLI that started it gets its `device_code`, which collects the token. While too many logins wait, it's `too_many_cli_logins`, and while another start is under way, `cli_logins_busy`; for each, trying again later is safe.",
+        "operationId": "cli_login_create",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CliLoginRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CliLoginStarted"
+                }
+              }
+            },
+            "description": "successful creation",
+            "headers": {
+              "cache-control": {
+                "required": true,
+                "schema": {
+                  "type": "string"
+                },
+                "style": "simple"
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "summary": "Starts `anywhere login`, with no credential: a login that waits 10"
+      }
+    },
+    "/v2/cli-logins/token": {
+      "post": {
+        "description": "device code and no other credential. Until a person approves it, it's `login_pending`, and asking again after `interval_seconds` is safe. The first answer after approval issues a 30-day agent token for the person who approved it, labelled with the machine's name, and ends the login, so no second answer gets a token: `cli_login_used`, even when the first answer was lost, so a request that may have reached the control plane isn't sent again. A login past its 10 minutes is `cli_login_expired`, and an unknown device code `unknown_cli_login`; for each, run `anywhere login` again.",
+        "operationId": "cli_login_token",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CliLoginTokenRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AgentTokenCreated"
+                }
+              }
+            },
+            "description": "successful creation",
+            "headers": {
+              "cache-control": {
+                "required": true,
+                "schema": {
+                  "type": "string"
+                },
+                "style": "simple"
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "summary": "Collects the agent token of an approved `anywhere login`, with its"
+      }
+    }
+  }
+}
