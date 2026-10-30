@@ -68,7 +68,7 @@ enum Command {
         /// that, the platform's own, https://api.anywhere.so.
         #[arg(long)]
         api: Option<String>,
-        /// The portal's origin, such as https://staging.anywhere.so, where the
+        /// The portal's origin, such as https://portal.example.test, where the
         /// approval link must then lead. Without it, ANYWHERE_PORTAL, and
         /// without that, the API's own origin or that origin with `api.`
         /// dropped from its host.

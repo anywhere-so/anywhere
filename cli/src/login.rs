@@ -326,7 +326,7 @@ fn check_started(
             expected: format!(
                 "a portal the API's address implies ({api}, or it with `api.` dropped from its host)"
             ),
-            fix: "if this platform's portal is on another origin, name it with --portal or ANYWHERE_PORTAL, such as `anywhere login --api https://staging-api.anywhere.so --portal https://staging.anywhere.so`".to_owned(),
+            fix: "if this platform's portal is on another origin, name it with --portal or ANYWHERE_PORTAL, such as `anywhere login --api https://api.example.test --portal https://portal.example.test`".to_owned(),
         }),
     }
 }
@@ -349,8 +349,7 @@ fn implied_portal(api: &Url, link: &Url) -> bool {
 /// The portal's host beside an API at Cloud Run's deterministic address,
 /// `anywhere-api-<project number>.<region>.run.app`: the same project and
 /// region, with `anywhere-portal-` in place of `anywhere-api-`.
-/// Staging's front doors are two Cloud Run services until it has its own
-/// domains, which `--portal` names; this goes when they're retired.
+/// Other portal origins must be explicitly configured with `--portal`.
 fn cloud_run_portal(api: &str) -> Option<String> {
     let (number, region) = api
         .strip_prefix("anywhere-api-")?
@@ -646,8 +645,8 @@ mod tests {
     #[test]
     fn a_portal_is_a_canonical_origin_and_plain_http_only_on_loopback() {
         for origin in [
-            "https://staging.anywhere.so",
-            "https://staging.anywhere.so/",
+            "https://portal.example.test",
+            "https://portal.example.test/",
             "https://anywhere.localhost:8443",
             "https://portal.test",
             "http://127.0.0.1:8080",
@@ -661,20 +660,20 @@ mod tests {
         }
         for origin in [
             "",
-            "staging.anywhere.so",
-            "http://staging.anywhere.so",
+            "portal.example.test",
+            "http://portal.example.test",
             "http://anywhere.localhost",
             "http://portal.test",
-            "ftp://staging.anywhere.so",
+            "ftp://portal.example.test",
             "javascript:alert(1)",
-            "https://STAGING.anywhere.so",
-            "https://staging.anywhere.so:443",
-            "https://staging.anywhere.so/cli-login",
-            "https://staging.anywhere.so?x=1",
-            "https://staging.anywhere.so#x",
-            "https://user@staging.anywhere.so",
-            "https://user:pass@staging.anywhere.so",
-            " https://staging.anywhere.so",
+            "https://PORTAL.example.test",
+            "https://portal.example.test:443",
+            "https://portal.example.test/cli-login",
+            "https://portal.example.test?x=1",
+            "https://portal.example.test#x",
+            "https://user@portal.example.test",
+            "https://user:pass@portal.example.test",
+            " https://portal.example.test",
         ] {
             let error = settings::portal_origin(origin, "ANYWHERE_PORTAL").unwrap_err();
             assert_eq!(error.code(), "setting_invalid", "{origin}");
@@ -690,9 +689,9 @@ mod tests {
     #[test]
     fn with_a_portal_named_only_links_on_exactly_its_origin_are_shown() {
         let code = "BCDF-GHJK";
-        let api = "https://staging-api.anywhere.so";
-        let staging = portal("https://staging.anywhere.so");
-        let link = "https://staging.anywhere.so/cli-login#code=BCDF-GHJK";
+        let api = "https://api.example.test";
+        let staging = portal("https://portal.example.test");
+        let link = "https://portal.example.test/cli-login#code=BCDF-GHJK";
         assert!(check_started(&started(link, code), api, Some(&staging)).is_ok());
         // Without it, staging's API implies no portal there.
         let error = check_started(&started(link, code), api, None).unwrap_err();
@@ -700,7 +699,7 @@ mod tests {
         assert!(
             error
                 .to_string()
-                .contains("--portal https://staging.anywhere.so")
+                .contains("--portal https://portal.example.test")
         );
         assert!(!error.is_temporary());
         // A local portal on its own port.
@@ -716,10 +715,7 @@ mod tests {
 
         for (link, api) in [
             // What the API's own address implies, which the named portal replaces.
-            (
-                "https://staging-api.anywhere.so/cli-login#code=BCDF-GHJK",
-                api,
-            ),
+            ("https://api.example.test/cli-login#code=BCDF-GHJK", api),
             (
                 "https://anywhere.test/cli-login#code=BCDF-GHJK",
                 "https://api.anywhere.test",
@@ -735,17 +731,17 @@ mod tests {
             // Another host, scheme or port than the portal's.
             ("https://evil.test/cli-login#code=BCDF-GHJK", api),
             (
-                "https://x.staging.anywhere.so/cli-login#code=BCDF-GHJK",
+                "https://x.portal.example.test/cli-login#code=BCDF-GHJK",
                 api,
             ),
             (
-                "https://staging.anywhere.so.evil.test/cli-login#code=BCDF-GHJK",
+                "https://portal.example.test.evil.test/cli-login#code=BCDF-GHJK",
                 api,
             ),
-            ("https://staging.anywhere.so./cli-login#code=BCDF-GHJK", api),
-            ("http://staging.anywhere.so/cli-login#code=BCDF-GHJK", api),
+            ("https://portal.example.test./cli-login#code=BCDF-GHJK", api),
+            ("http://portal.example.test/cli-login#code=BCDF-GHJK", api),
             (
-                "https://staging.anywhere.so:8443/cli-login#code=BCDF-GHJK",
+                "https://portal.example.test:8443/cli-login#code=BCDF-GHJK",
                 api,
             ),
         ] {
@@ -753,18 +749,18 @@ mod tests {
             assert_eq!(error.code(), "login_portal_unexpected", "{link}");
             let message = error.to_string();
             assert!(
-                message.contains("the portal --portal names, https://staging.anywhere.so"),
+                message.contains("the portal --portal names, https://portal.example.test"),
                 "{message}"
             );
             assert!(!message.contains("evil.test"), "{message}");
         }
         // The page, its code and the rest are checked as before.
         for link in [
-            "https://staging.anywhere.so/cli-login",
-            "https://staging.anywhere.so/cli-login#code=BCDF-GHJL",
-            "https://staging.anywhere.so/other#code=BCDF-GHJK",
-            "https://staging.anywhere.so/cli-login?x=1#code=BCDF-GHJK",
-            "https://user@staging.anywhere.so/cli-login#code=BCDF-GHJK",
+            "https://portal.example.test/cli-login",
+            "https://portal.example.test/cli-login#code=BCDF-GHJL",
+            "https://portal.example.test/other#code=BCDF-GHJK",
+            "https://portal.example.test/cli-login?x=1#code=BCDF-GHJK",
+            "https://user@portal.example.test/cli-login#code=BCDF-GHJK",
         ] {
             let error = check_started(&started(link, code), api, Some(&staging)).unwrap_err();
             assert_eq!(error.code(), "api_answer_invalid", "{link}");
