@@ -14,7 +14,7 @@ The installer installs the CLI and its matching skill bundle for Claude Code and
 
 `anywhere apps list` checks credentials. A successful list, including an empty list, means signed in.
 
-Run `anywhere login` when needed. It writes an approval URL and user code to stderr and waits up to 10 minutes. Keep the command running using the execution tool's background/session support; read its output while waiting. If redirecting output is necessary, use a unique private temporary directory with owner-only permissions, not a shared fixed log path. Remove that temporary output after the command ends.
+Run `anywhere login` when needed. It writes an approval URL and user code to stderr and waits up to 10 minutes. It accepts an optional API URL as `--api URL`; keep the exact returned link and code together. Keep the command running using the execution tool's background/session support; read its output while waiting. If redirecting output is necessary, use a unique private temporary directory with owner-only permissions, not a shared fixed log path. Remove that temporary output after the command ends.
 
 Give the URL and code only to the user who requested the login. They open the URL, sign in, verify the code and machine name, then approve. This authorizes the machine for 30 days. Never approve a real user's login yourself or ask them for a token. `--no-browser` suppresses opening the URL; without it the CLI opens a browser only when stdout is a terminal.
 
@@ -32,3 +32,7 @@ Credentials are saved in `$XDG_CONFIG_HOME/anywhere/credentials.json`, defaultin
 | `cli_login_expired` | Start login again and give the user the new URL/code. |
 | `api_unreachable` | Check the network and configured API; do not treat this as missing credentials. |
 | `cli_outdated` | Reinstall, reread the updated skill, then repeat the refused command. The platform rejected it before making a change. |
+
+## Token helpers
+
+`anywhere token` prints the whole-account token; never invoke it in an agent transcript. A trusted local client's header helper can call `anywhere token --header-json` to read a raw Authorization header object. It uses saved credentials or the complete API/token override pair and fails when signed out; do not export just one override or send the output to logs. Check sign-in with `apps list` instead.

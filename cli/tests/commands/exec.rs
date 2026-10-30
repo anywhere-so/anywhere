@@ -11,6 +11,7 @@ async fn exec_reports_the_platforms_refusal_and_argument_errors() {
         }),
         delay: Duration::ZERO,
         raw: None,
+        stream: None,
     }])
     .await;
 
@@ -45,6 +46,7 @@ async fn exec_never_prints_the_ticket_when_the_upgrade_connection_drops() {
             }),
             delay: Duration::ZERO,
             raw: None,
+            stream: None,
         },
         // Status 0 closes the connection without answering the WebSocket GET.
         Reply {
@@ -52,6 +54,7 @@ async fn exec_never_prints_the_ticket_when_the_upgrade_connection_drops() {
             body: json!({}),
             delay: Duration::ZERO,
             raw: None,
+            stream: None,
         },
     ])
     .await;

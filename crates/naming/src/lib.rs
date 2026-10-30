@@ -13,6 +13,8 @@
 //! Names are checked exactly as given. Hostnames are case-insensitive, so a caller
 //! that reads one from a request lowercases it first.
 
+pub mod public_apps;
+
 use std::fmt;
 
 /// The longest a DNS label can be. An app's whole address must fit in one.

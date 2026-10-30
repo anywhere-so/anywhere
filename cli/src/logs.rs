@@ -1,16 +1,25 @@
 //! An app's logs: what it printed in its latest run and the run before, with
 //! its deploys' and builds' output among it, and with `--follow`, what it
-//! prints next. The bytes
-//! are the app's, and can hold anything, so the CLI shows them as text with
-//! control characters escaped, never as the terminal would read them.
+//! prints next, until interrupted. The bytes are the app's, and can hold
+//! anything, so the CLI shows them as text with control characters escaped,
+//! never as the terminal would read them.
+//!
+//! A follow comes as events (`control_api::FollowReader`), each part with
+//! where the log is after it. When one ends, whether the platform ended it
+//! after its 30 minutes, the connection dropped, or nothing came for longer
+//! than its heartbeats allow, the CLI asks again from where it got to, so
+//! nothing shows twice; asking again is what says if access has ended.
 
+use std::convert::Infallible;
 use std::io::Write;
+use std::time::Duration;
 
 use futures_util::StreamExt;
 use tokio::time::Instant;
 
 use crate::api::types::ErrorBody;
-use crate::control;
+use crate::app_ref::AppRef;
+use crate::control::{self, Control};
 use crate::error::{CliError, chain};
 use crate::output::{Output, ResultData};
 use crate::retry::Retries;
@@ -23,25 +32,272 @@ const MAX_JSON_OUTPUT: usize = 4 << 20;
 
 /// How long a read that doesn't follow may wait for its next part: the host
 /// sends what's there at once.
-const QUIET_FOR: std::time::Duration = std::time::Duration::from_secs(60);
+const QUIET_FOR: Duration = Duration::from_secs(60);
+
+/// How many follows in a row may end before any event came, each asked for
+/// again, before the CLI gives up: one that keeps ending at once is broken.
+/// A heartbeat counts as an event, so a quiet app's follow, which the
+/// platform ends after 30 minutes, never counts. Not measured, as the waits
+/// between, 1 to 8 seconds, aren't.
+const EMPTY_FOLLOWS: u32 = 5;
 
 pub async fn show(app: Option<&str>, follow: bool, output: Output) -> Result<ResultData, CliError> {
     let app = secrets::target(app)?.app;
-    let (control, _) = control::connect()?;
+    let control = control::connect_streams()?;
+    if follow {
+        return follow_on(&control, &app, output).await;
+    }
+    let mut stream = open(
+        &control,
+        &app,
+        Read::All,
+        output,
+        Instant::now() + API_TIMEOUT,
+        Attempts::Retried,
+    )
+    .await?;
+    let mut shown = Shown::default();
+    let mut collected = Vec::new();
+    let mut reader = control_api::FollowReader::default();
+    let mut stdout = std::io::stdout().lock();
+    loop {
+        let next = tokio::time::timeout(QUIET_FOR, stream.next())
+            .await
+            .map_err(|_| CliError::LogsInterrupted {
+                detail: format!("nothing came for {} seconds", QUIET_FOR.as_secs()),
+            })?;
+        let Some(chunk) = next else {
+            break;
+        };
+        let chunk = chunk.map_err(|error| CliError::LogsInterrupted {
+            detail: chain(&error),
+        })?;
+        for event in reader.push(&chunk).map_err(|error| CliError::BadAnswer {
+            detail: error.to_string(),
+        })? {
+            match event {
+                control_api::FollowEvent::Notice(notice) => output.log_notice(notice),
+                control_api::FollowEvent::Heartbeat => {}
+                control_api::FollowEvent::Data { bytes, .. } => {
+                    if output.json {
+                        if collected.len() + bytes.len() > MAX_JSON_OUTPUT {
+                            return Err(CliError::BadAnswer {
+                                detail: "logs exceeded their collection limit".to_owned(),
+                            });
+                        }
+                        collected.extend_from_slice(&bytes);
+                    } else {
+                        print(&mut stdout, &shown.push(&bytes))?;
+                    }
+                }
+            }
+        }
+    }
+    if !reader.at_rest() {
+        return Err(CliError::LogsInterrupted {
+            detail: "the response ended during a log event".to_owned(),
+        });
+    }
+    if output.json {
+        return Ok(ResultData::Logs {
+            output: Some(String::from_utf8_lossy(&collected).into_owned()),
+        });
+    }
+    print(&mut stdout, &shown.finish())?;
+    Ok(ResultData::Logs { output: None })
+}
+
+/// Follows the app's logs until interrupted, or until asking again is
+/// refused, which is the error.
+async fn follow_on(
+    control: &Control,
+    app: &AppRef,
+    output: Output,
+) -> Result<ResultData, CliError> {
+    let mut shown = Shown::default();
+    let mut stdout = std::io::stdout().lock();
+    match follow(control, app, None, output, Notices::All, |bytes| {
+        print(&mut stdout, &shown.push(bytes))
+    })
+    .await
+    {
+        Ok(never) => match never {},
+        Err(error) => Err(error),
+    }
+}
+
+/// Which of the host's notices a follow shows.
+#[derive(Clone, Copy)]
+pub enum Notices {
+    All,
+    /// Only those that say this output is incomplete or repeated: a deploy's
+    /// follow starts where the log ended, so how much the host keeps of
+    /// earlier runs (`retention`) is noise there.
+    Completeness,
+}
+
+/// Follow an app's output for a command that owns the read's lifetime and
+/// decides where its bytes go. Dropping this future closes the stream.
+pub async fn follow(
+    control: &Control,
+    app: &AppRef,
+    mut after: Option<String>,
+    output: Output,
+    notices: Notices,
+    mut receive: impl FnMut(&[u8]) -> Result<(), CliError>,
+) -> Result<Infallible, CliError> {
+    let mut empty = 0;
+    loop {
+        let mut stream = open(
+            control,
+            app,
+            Read::Follow(after.as_deref()),
+            output,
+            Instant::now() + API_TIMEOUT,
+            Attempts::Retried,
+        )
+        .await?;
+        let mut reader = control_api::FollowReader::default();
+        let mut heard = false;
+        let dropped = loop {
+            let next = tokio::time::timeout(control_api::LOGS_FOLLOW_QUIET, stream.next()).await;
+            let chunk = match next {
+                Err(_) => {
+                    break Some(format!(
+                        "nothing came for {} seconds, not even the platform's heartbeat",
+                        control_api::LOGS_FOLLOW_QUIET.as_secs()
+                    ));
+                }
+                Ok(None) if reader.at_rest() => break None,
+                Ok(None) => break Some("the connection ended partway through a part".to_owned()),
+                Ok(Some(Err(error))) => break Some(chain(&error)),
+                Ok(Some(Ok(chunk))) => chunk,
+            };
+            let events = reader.push(&chunk).map_err(|error| CliError::BadAnswer {
+                detail: error.to_string(),
+            })?;
+            for event in events {
+                match event {
+                    control_api::FollowEvent::Data { bytes, position } => {
+                        heard = true;
+                        receive(&bytes)?;
+                        after = Some(position.to_string());
+                    }
+                    control_api::FollowEvent::Notice(control_api::LogNotice::Retention)
+                        if matches!(notices, Notices::Completeness) => {}
+                    control_api::FollowEvent::Notice(notice) => output.log_notice(notice),
+                    control_api::FollowEvent::Heartbeat => {
+                        heard = true;
+                    }
+                }
+            }
+        };
+        empty = if heard { 0 } else { empty + 1 };
+        if empty >= EMPTY_FOLLOWS {
+            return Err(CliError::LogsInterrupted {
+                detail: format!(
+                    "the platform ended {EMPTY_FOLLOWS} follows in a row before sending anything, the last {}",
+                    dropped.as_deref().unwrap_or("cleanly")
+                ),
+            });
+        }
+        // The platform ends a follow after 30 minutes, cleanly, to check access
+        // again; a drop is worth saying.
+        if let Some(why) = dropped {
+            output.progress(&format!(
+                "the logs' connection dropped ({why}); following again from where it got to"
+            ));
+        }
+        if empty > 0 {
+            tokio::time::sleep(Duration::from_secs(1 << (empty - 1))).await;
+        }
+    }
+}
+
+/// Captures the end before a deploy starts, without downloading old output,
+/// in a finite read, so it doesn't hold one of the caller's reads open.
+pub async fn end(control: &Control, app: &AppRef, output: Output) -> Result<String, CliError> {
     let deadline = Instant::now() + API_TIMEOUT;
+    let mut stream = open(control, app, Read::End, output, deadline, Attempts::Once).await?;
+    let mut reader = control_api::FollowReader::default();
+    loop {
+        let chunk = tokio::time::timeout_at(deadline, stream.next())
+            .await
+            .map_err(|_| CliError::ReadTimedOut)?
+            .ok_or_else(|| CliError::BadAnswer {
+                detail: "the log end read ended without the end's place".to_owned(),
+            })?
+            .map_err(|error| CliError::LogsInterrupted {
+                detail: chain(&error),
+            })?;
+        for event in reader.push(&chunk).map_err(|error| CliError::BadAnswer {
+            detail: error.to_string(),
+        })? {
+            if let control_api::FollowEvent::Data { bytes, position } = event {
+                if !bytes.is_empty() {
+                    return Err(CliError::BadAnswer {
+                        detail: "the log end read sent output instead of the end's place"
+                            .to_owned(),
+                    });
+                }
+                return Ok(position.to_string());
+            }
+        }
+    }
+}
+
+/// How many times `open` asks.
+#[derive(Clone, Copy)]
+enum Attempts {
+    /// Retried like any read.
+    Retried,
+    /// One try: a deploy's end read, whose failure only costs a warning,
+    /// mustn't hold the deploy up.
+    Once,
+}
+
+/// Which read of the app's logs `open` starts.
+#[derive(Clone, Copy)]
+enum Read<'a> {
+    /// What's there now, then the answer ends.
+    All,
+    /// Only where the log ends now, then the answer ends, so the read is gone
+    /// from the host at once rather than at a follow's next heartbeat.
+    End,
+    /// What comes, from where an earlier follow got to, if it got anywhere.
+    Follow(Option<&'a str>),
+}
+
+/// Starts `read` of the app's logs, by `deadline`.
+async fn open(
+    control: &Control,
+    app: &AppRef,
+    read: Read<'_>,
+    output: Output,
+    deadline: Instant,
+    attempts: Attempts,
+) -> Result<progenitor_client::ByteStream, CliError> {
     let mut retries = Retries::with_output(deadline, output);
-    // Starting the read is retried like any read; once bytes flow, a broken
-    // stream is an error, since reading again would show them twice.
-    let (mut stream, asked) = loop {
-        let asked = Instant::now();
-        let request =
-            control
-                .client
-                .app_logs(app.name.as_str(), follow.then_some(true), app.owner());
+    loop {
+        let request = control.client.app_logs(
+            app.name.as_str(),
+            match read {
+                Read::All => None,
+                Read::End => Some("end"),
+                Read::Follow(after) => after,
+            },
+            Some(true),
+            match read {
+                Read::All => None,
+                Read::End => Some(false),
+                Read::Follow(_) => Some(true),
+            },
+            app.owner(),
+        );
         let error = match tokio::time::timeout_at(deadline, request).await {
             Err(_) => return Err(CliError::ReadTimedOut),
             Ok(Ok(response)) if response.status().is_success() => {
-                break (response.into_inner(), asked);
+                return Ok(response.into_inner());
             }
             Ok(Ok(response)) => refused(response.status(), response.into_inner()).await,
             Ok(Err(progenitor_client::Error::ErrorResponse(response))) => {
@@ -49,73 +305,19 @@ pub async fn show(app: Option<&str>, follow: bool, output: Output) -> Result<Res
             }
             Ok(Err(error)) => control::stream_error(&control.api, error),
         };
-        if !retries.again(&error).await {
+        if matches!(attempts, Attempts::Once) || !retries.again(&error).await {
             return Err(error);
         }
-    };
-    let mut shown = Shown::default();
-    let mut collected = Vec::new();
-    let mut stdout = std::io::stdout().lock();
-    loop {
-        let next = if follow {
-            stream.next().await
-        } else {
-            tokio::time::timeout(QUIET_FOR, stream.next())
-                .await
-                .map_err(|_| CliError::LogsInterrupted {
-                    detail: format!("nothing came for {} seconds", QUIET_FOR.as_secs()),
-                })?
-        };
-        let Some(chunk) = next else {
-            break;
-        };
-        let chunk = chunk.map_err(|error| CliError::LogsInterrupted {
-            detail: chain(&error),
-        })?;
-        if output.json {
-            if collected.len() + chunk.len() > MAX_JSON_OUTPUT {
-                return Err(CliError::Internal {
-                    detail: format!(
-                        "the control API sent over {MAX_JSON_OUTPUT} bytes of logs, more than an app keeps"
-                    ),
-                });
-            }
-            collected.extend_from_slice(&chunk);
-            continue;
-        }
-        let text = shown.push(&chunk);
-        stdout
-            .write_all(text.as_bytes())
-            .and_then(|()| stdout.flush())
-            .map_err(|error| CliError::Internal {
-                detail: format!("couldn't write the logs to standard output: {error}"),
-            })?;
     }
-    if output.json {
-        return Ok(ResultData::Logs {
-            output: Some(String::from_utf8_lossy(&collected).into_owned()),
-        });
-    }
-    let rest = shown.finish();
+}
+
+fn print(stdout: &mut std::io::StdoutLock<'_>, text: &str) -> Result<(), CliError> {
     stdout
-        .write_all(rest.as_bytes())
+        .write_all(text.as_bytes())
         .and_then(|()| stdout.flush())
         .map_err(|error| CliError::Internal {
             detail: format!("couldn't write the logs to standard output: {error}"),
-        })?;
-    if follow {
-        follow_ended(asked.elapsed())?;
-        // A cut read late, as when standard output held the rest back, can pass
-        // the time; a revoked or expired credential still fails here.
-        tokio::time::timeout(API_TIMEOUT, control.client.me_view())
-            .await
-            .map_err(|_| CliError::ReadTimedOut)?
-            .map_err(|error| control.error(error))?;
-        output.progress(
-            "the platform ends a follow after 30 minutes; run the same command again to go on following",
-        );
-    }
-    Ok(ResultData::Logs { output: None })
+        })
 }
 
 /// The control API's refusal, read from its answer's body, at most 64 KiB.
@@ -239,42 +441,9 @@ fn invisible(c: char) -> bool {
     )
 }
 
-/// Whether a follow that lasted `lasted` ended as the platform ends one, after
-/// `LOGS_FOLLOW_FOR`. Any sooner end was a cut, such as a revoked token's,
-/// whatever the connection made of it.
-fn follow_ended(lasted: std::time::Duration) -> Result<(), CliError> {
-    if lasted >= control_api::LOGS_FOLLOW_FOR {
-        return Ok(());
-    }
-    Err(CliError::LogsInterrupted {
-        detail: format!(
-            "the platform ended the follow after {} s, before its {} minutes, as it does when the token or session is revoked or expires, when the app goes, or when the owner of an app shared with you removes you or makes you a member",
-            lasted.as_secs(),
-            control_api::LOGS_FOLLOW_FOR.as_secs() / 60
-        ),
-    })
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn only_a_follow_that_lasts_its_full_time_ended_as_the_platform_ends_one() {
-        assert!(follow_ended(control_api::LOGS_FOLLOW_FOR).is_ok());
-        let cut = follow_ended(std::time::Duration::from_secs(3)).unwrap_err();
-        assert_eq!(cut.code(), "logs_interrupted");
-        assert!(cut.is_temporary());
-        assert!(
-            cut.to_string().contains("after 3 s, before its 30 minutes"),
-            "{cut}"
-        );
-        assert!(
-            cut.to_string()
-                .contains("the owner of an app shared with you removes you or makes you a member"),
-            "{cut}"
-        );
-    }
 
     #[test]
     fn control_characters_show_as_escapes_and_lines_stay_lines() {

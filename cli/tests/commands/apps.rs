@@ -2,7 +2,7 @@ use super::*;
 
 fn app() -> Value {
     json!({"name":"hello","title":"Hello","url":"https://dev-hello.anywhereapps.test",
-        "running":true,"status":"running","restarts":0,"resources":{"size":"medium","disk_gib":10},
+        "running":true,"status":"running","restarts":0,"limits": { "cpu_millicores": 2000, "memory_bytes": 4294967296u64, "disk_bytes": 10737418240u64 },
         "deployed_at":"2026-10-12T00:00:00Z"})
 }
 
@@ -65,7 +65,7 @@ async fn lists_the_apps_shared_with_you_after_your_own_as_owner_slash_name_with_
 #[tokio::test]
 async fn inspects_status_and_recent_deploys() {
     let details = json!({"app":app(),
-        "deploys":[{"operation":ID,"state":"failed","started_at":"2026-10-12T00:00:00Z",
+        "deploys_truncated":false,"deploys":[{"operation":ID,"state":"failed","started_at":"2026-10-12T00:00:00Z",
         "ended_at":"2026-10-12T00:01:00Z","by":"jo",
         "error":{"code":"app_not_listening","message":"listen on PORT","retryable":false}}]});
     let server = Server::start(vec![reply(details.clone())]).await;
@@ -78,7 +78,7 @@ async fn inspects_status_and_recent_deploys() {
     assert_eq!(
         text(&output.stdout),
         format!(
-            "Hello (hello)\nrunning\nhttps://dev-hello.anywhereapps.test\nRequested resources: medium (2 shared vCPUs, 4 GiB memory), 10 GiB disk\nLast deployed: 2026-10-12 00:00:00 UTC\nDeploys (newest first):\n  {ID}: failed (2026-10-12 00:00:00 UTC), started by jo\n    app_not_listening: listen on PORT\n"
+            "Hello (hello)\nrunning\nhttps://dev-hello.anywhereapps.test\nLimits: 2 shared vCPUs · 4 GiB memory · 10 GiB disk\nLast deployed: 2026-10-12 00:00:00 UTC\nDeploys (source: control plane, newest first):\n  {ID}: failed (2026-10-12 00:00:00 UTC), started by jo\n    app_not_listening: listen on PORT\n"
         )
     );
     assert!(
@@ -90,19 +90,50 @@ async fn inspects_status_and_recent_deploys() {
 }
 
 #[tokio::test]
+async fn an_app_its_host_refused_to_start_says_why() {
+    let mut failed = app();
+    failed["running"] = json!(false);
+    failed["status"] = json!("failed");
+    failed["error"] = json!({"code":"app_disk_missing",
+        "message":"this app's disk isn't on its host","retryable":false});
+    let server = Server::start(vec![
+        reply(json!({"app":failed.clone(),"deploys_truncated":false,"deploys":[]})),
+        reply(json!({"apps":[failed]})),
+        reply(json!({"apps":[]})),
+    ])
+    .await;
+    let output = server.run(&["apps", "inspect", "hello"]).await;
+    assert!(output.status.success(), "{}", text(&output.stderr));
+    assert_eq!(
+        text(&output.stdout),
+        "Hello (hello)\nfailed\nhttps://dev-hello.anywhereapps.test\napp_disk_missing: this app's disk isn't on its host\nLimits: 2 shared vCPUs · 4 GiB memory · 10 GiB disk\nLast deployed: 2026-10-12 00:00:00 UTC\nDeploys (source: control plane, newest first):\n"
+    );
+    let output = server.run(&["apps", "list"]).await;
+    assert!(output.status.success(), "{}", text(&output.stderr));
+    assert!(
+        text(&output.stdout).starts_with("hello\tfailed\t"),
+        "{}",
+        text(&output.stdout)
+    );
+}
+
+#[tokio::test]
 async fn inspects_an_app_you_edit_by_owner_slash_name() {
-    let server = Server::start(vec![reply(json!({"app":app(),"deploys":[]}))]).await;
+    let server = Server::start(vec![reply(
+        json!({"app":app(),"deploys_truncated":false,"deploys":[]}),
+    )])
+    .await;
     success(
         &server
-            .run(&["--json", "apps", "inspect", "alice/wiki"])
+            .run(&["--json", "apps", "inspect", "michael/wiki"])
             .await,
     );
-    assert_eq!(server.paths(), ["GET /v1/apps/wiki?owner=alice HTTP/1.1"]);
+    assert_eq!(server.paths(), ["GET /v1/apps/wiki?owner=michael HTTP/1.1"]);
 
     let server = Server::start(vec![reply(json!({}))]).await;
     for (name, code) in [
-        ("Alice/wiki", "invalid_username"),
-        ("alice/", "invalid_app_name"),
+        ("Michael/wiki", "invalid_username"),
+        ("michael/", "invalid_app_name"),
         ("a/b/c", "invalid_app_name"),
     ] {
         failure(
@@ -162,7 +193,10 @@ async fn an_app_its_host_restarts_says_how_it_is_doing_and_how_often() {
                 "hello\t{shown}\tdeployed 2026-10-12 00:00:00 UTC\thttps://dev-hello.anywhereapps.test\n"
             )
         );
-        let server = Server::start(vec![reply(json!({"app":app,"deploys":[]}))]).await;
+        let server = Server::start(vec![reply(
+            json!({"app":app,"deploys_truncated":false,"deploys":[]}),
+        )])
+        .await;
         let output = server.run(&["apps", "inspect", "hello"]).await;
         assert!(text(&output.stdout).starts_with(&format!("Hello (hello)\n{shown}\n")));
     }
@@ -185,7 +219,10 @@ async fn a_background_app_says_it_runs_in_the_background_in_place_of_an_address(
         "ticker\trunning\tdeployed 2026-10-12 00:00:00 UTC\truns in the background\n"
     );
 
-    let server = Server::start(vec![reply(json!({"app":ticker,"deploys":[]}))]).await;
+    let server = Server::start(vec![reply(
+        json!({"app":ticker,"deploys_truncated":false,"deploys":[]}),
+    )])
+    .await;
     let output = server.run(&["apps", "inspect", "ticker"]).await;
     assert!(output.status.success(), "{}", text(&output.stderr));
     let shown = text(&output.stdout);
@@ -244,7 +281,10 @@ async fn malformed_api_answers_fail_loudly_without_retry() {
 async fn human_output_escapes_terminal_controls_in_api_content() {
     let mut hostile = app();
     hostile["title"] = json!("Hello\u{001b}[2J\u{202e}hidden");
-    let server = Server::start(vec![reply(json!({"app":hostile,"deploys":[]}))]).await;
+    let server = Server::start(vec![reply(
+        json!({"app":hostile,"deploys_truncated":false,"deploys":[]}),
+    )])
+    .await;
     let output = server.run(&["apps", "inspect", "hello"]).await;
     assert!(output.status.success());
     assert!(!text(&output.stdout).contains('\u{001b}'));
@@ -326,8 +366,8 @@ async fn without_a_terminal_or_yes_nothing_is_deleted_and_it_says_to_add_yes() {
 async fn a_refused_delete_keeps_the_platforms_code_and_is_not_sent_again() {
     for (args, path, status, code) in [
         (
-            ["--json", "apps", "delete", "alice/wiki", "--yes"],
-            "DELETE /v1/apps/wiki?owner=alice HTTP/1.1",
+            ["--json", "apps", "delete", "michael/wiki", "--yes"],
+            "DELETE /v1/apps/wiki?owner=michael HTTP/1.1",
             403,
             "owner_only",
         ),

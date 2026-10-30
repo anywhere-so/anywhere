@@ -1,5 +1,7 @@
-//! Runs a command inside an app, streaming standard input, output, and error
-//! over an authenticated WebSocket. An app is NAME or OWNER/NAME for a shared app.
+//! `anywhere exec <app> -- <command> [args…]`: runs one command in a running
+//! app's sandbox, streaming standard input, output and error over a WebSocket
+//! through the gateway, the tunnel and the host proxy. The app is one of yours, `NAME`, or `OWNER/NAME`,
+//! one whose owner made you a developer.
 
 use std::io::{self, Read as _, Write};
 
@@ -131,6 +133,7 @@ pub async fn start(
                 server_message::Kind::Started(_) => break,
                 server_message::Kind::Error(error) => {
                     return Err(CliError::Api(ErrorBody {
+                        diagnostic: None,
                         code: error.code,
                         message: error.message,
                         retryable: error.retryable,
@@ -207,6 +210,7 @@ impl Reader {
                     }
                     server_message::Kind::Error(error) => {
                         return Err(CliError::Api(ErrorBody {
+                            diagnostic: None,
                             code: error.code,
                             message: error.message,
                             retryable: false,

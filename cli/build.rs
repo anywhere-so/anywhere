@@ -1,10 +1,12 @@
 //! Generates the control API's client from its OpenAPI spec, `api/control.json`,
-//! with progenitor, each time the crate builds. It's never checked in.
+//! with progenitor, each time the crate builds. It's never checked in. It also
+//! stamps the CLI's version with the commit a release builds it from.
 
 use std::error::Error;
 use std::path::Path;
 
 fn main() -> Result<(), Box<dyn Error>> {
+    stamp_version()?;
     bundle_skill()?;
     let spec_path = Path::new(env!("CARGO_MANIFEST_DIR")).join("../api/control.json");
     println!("cargo::rerun-if-changed={}", spec_path.display());
@@ -15,15 +17,47 @@ fn main() -> Result<(), Box<dyn Error>> {
         .with_interface(progenitor::InterfaceStyle::Positional)
         // The spec's own types for these come from the crates the CLI checks
         // them with, so the client sends exactly what was checked.
+        .with_replacement(
+            "DeployRequest",
+            "control_api::DeployRequest",
+            std::iter::empty(),
+        )
         .with_replacement("AppSpec", "appspec::AppSpec", std::iter::empty())
-        .with_replacement("Resources", "appspec::Resources", std::iter::empty())
+        .with_replacement("Limits", "appspec::Limits", std::iter::empty())
+        .with_replacement(
+            "LimitRequests",
+            "appspec::LimitRequests",
+            std::iter::empty(),
+        )
         .with_replacement("FileEntry", "manifest::FileEntry", std::iter::empty())
         .with_replacement(
             "SecretRequest",
             "control_api::SecretRequest",
             std::iter::empty(),
         )
+        .with_replacement(
+            "SecretsRequest",
+            "control_api::SecretsRequest",
+            std::iter::empty(),
+        )
+        .with_replacement(
+            "NamedSecret",
+            "control_api::NamedSecret",
+            std::iter::empty(),
+        )
         .with_replacement("PullBundle", "control_api::PullBundle", std::iter::empty())
+        // The plan, which `anywhere check` holds the app to with the control
+        // plane's own rules (`control_api::plans`).
+        .with_replacement("Plan", "control_api::Plan", std::iter::empty())
+        .with_replacement("PlanLimits", "control_api::PlanLimits", std::iter::empty())
+        // An app's usage, read with the words and rules the control plane
+        // writes its problems with.
+        .with_replacement(
+            "AccountUsage",
+            "control_api::AccountUsage",
+            std::iter::empty(),
+        )
+        .with_replacement("AppUsage", "control_api::AppUsage", std::iter::empty())
         // An email, which the crate's own keep out of Debug.
         .with_replacement(
             "ShareRequest",
@@ -35,6 +69,8 @@ fn main() -> Result<(), Box<dyn Error>> {
             "control_api::ShareAddRequest",
             std::iter::empty(),
         )
+        .with_replacement("AppAccess", "control_api::AppAccess", std::iter::empty())
+        .with_replacement("Visibility", "control_api::Visibility", std::iter::empty())
         .with_replacement("ShareRole", "control_api::ShareRole", std::iter::empty())
         // These hold secrets, and the crate's own keep them out of Debug.
         .with_replacement(
@@ -61,6 +97,36 @@ fn main() -> Result<(), Box<dyn Error>> {
 
     let out = Path::new(&std::env::var("OUT_DIR")?).join("control_api.rs");
     std::fs::write(out, code.to_string())?;
+    Ok(())
+}
+
+/// Sets `ANYWHERE_VERSION`, what `--version` and the User-Agent say: the
+/// crate's version, and for a release, `+` and the first 12 characters of
+/// `ANYWHERE_SOURCE_REVISION`, the commit it's built from, which the release
+/// bundle's builds set, so one release's CLI tells itself apart from
+/// another's. A revision that isn't a full commit ID stops the build.
+fn stamp_version() -> Result<(), Box<dyn Error>> {
+    println!("cargo::rerun-if-env-changed=ANYWHERE_SOURCE_REVISION");
+    let package = env!("CARGO_PKG_VERSION");
+    let version = match std::env::var("ANYWHERE_SOURCE_REVISION") {
+        Err(std::env::VarError::NotPresent) => package.to_owned(),
+        Ok(revision)
+            if revision.len() == 40
+                && revision
+                    .bytes()
+                    .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte)) =>
+        {
+            format!("{package}+{}", &revision[..12])
+        }
+        Ok(revision) => {
+            return Err(format!(
+                "ANYWHERE_SOURCE_REVISION is {revision:?}, not a commit's 40 lowercase hex digits; set it to the commit's full ID, or unset it"
+            )
+            .into());
+        }
+        Err(error) => return Err(format!("ANYWHERE_SOURCE_REVISION: {error}").into()),
+    };
+    println!("cargo::rustc-env=ANYWHERE_VERSION={version}");
     Ok(())
 }
 

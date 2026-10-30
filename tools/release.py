@@ -43,6 +43,7 @@ def stage(target):
     if version == '0.0.0':
         raise ValueError('choose a release version in cli/Cargo.toml first')
     environment = os.environ.copy()
+    environment["ANYWHERE_SOURCE_REVISION"] = revision
     if target.endswith('apple-darwin'):
         environment['MACOSX_DEPLOYMENT_TARGET'] = '13.0'
     else:

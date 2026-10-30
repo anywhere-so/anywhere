@@ -121,3 +121,38 @@ fn name(app: &str) -> Result<AppName, CliError> {
     }
     AppName::parse(app).map_err(|source| CliError::LookupName { source })
 }
+
+/// Reads access, or saves it and waits until every gateway applies and drains it.
+pub async fn access(
+    app: &str,
+    visibility: Option<control_api::Visibility>,
+    output: &mut Output,
+) -> Result<ResultData, CliError> {
+    let app = name(app)?;
+    let (control, _) = control::connect()?;
+    if let Some(visibility) = visibility {
+        if visibility == control_api::Visibility::Public {
+            output.progress(
+                "Making this app public exposes its pages and actions to anyone without signing in",
+            );
+        }
+        let operation = control
+            .client
+            .app_access_set(app.as_str(), &control_api::AppAccess { visibility })
+            .await
+            .map_err(|error| {
+                unconfirmed(
+                    control.error(error),
+                    "read the saved setting with anywhere apps access before repeating the change",
+                )
+            })?
+            .into_inner();
+        let id = started(&operation, &format!("Changing access to {app}"), output);
+        return operations::follow(&control, id, true, CHANGE_DEADLINE, *output).await;
+    }
+    Ok(ResultData::Access(
+        control
+            .access(app.as_str(), Instant::now() + API_TIMEOUT, *output)
+            .await?,
+    ))
+}

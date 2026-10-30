@@ -1,0 +1,6 @@
+event: retention
+
+event: truncated
+
+event: resume_lost
+

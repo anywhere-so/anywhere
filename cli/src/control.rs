@@ -9,7 +9,7 @@ use uuid::Uuid;
 use crate::api::{
     self,
     types::{
-        AppDetails, AppList, Operation, SecretList, ShareList, SharedAppList, Ticket,
+        AppDetails, AppList, Me, Operation, SecretList, ShareList, SharedAppList, Ticket,
         TicketRequest, TicketService,
     },
 };
@@ -25,7 +25,20 @@ pub struct Control {
 }
 
 pub fn connect() -> Result<(Control, crate::settings::UploadClient), CliError> {
-    let settings = Settings::from_env()?;
+    with(Settings::from_env()?)
+}
+
+/// [`connect`], or None when nobody has signed in on this machine: no
+/// credentials file, and neither `ANYWHERE_API` nor `ANYWHERE_TOKEN`. Any
+/// other problem with the settings is still an error.
+pub fn connect_if_signed_in() -> Result<Option<Control>, CliError> {
+    match Settings::from_env() {
+        Err(CliError::NotSignedIn { .. }) => Ok(None),
+        settings => with(settings?).map(|(control, _)| Some(control)),
+    }
+}
+
+fn with(settings: Settings) -> Result<(Control, crate::settings::UploadClient), CliError> {
     let clients = settings.clients()?;
     Ok((
         Control {
@@ -34,6 +47,17 @@ pub fn connect() -> Result<(Control, crate::settings::UploadClient), CliError> {
         },
         clients.uploads,
     ))
+}
+
+/// The control API through a client with no timeout for a whole answer, for
+/// answers that stream, whose reader bounds each wait itself.
+pub fn connect_streams() -> Result<Control, CliError> {
+    let settings = Settings::from_env()?;
+    let clients = settings.clients()?;
+    Ok(Control {
+        client: api::Client::new_with_client(&settings.api, clients.streams),
+        api: settings.api,
+    })
 }
 
 impl Control {
@@ -58,6 +82,11 @@ impl Control {
         self.read(deadline, output, || self.client.app_list()).await
     }
 
+    /// Who's signed in, and their plan.
+    pub async fn me(&self, deadline: Instant, output: Output) -> Result<Me, CliError> {
+        self.read(deadline, output, || self.client.me_view()).await
+    }
+
     pub async fn inspect(
         &self,
         app: &AppRef,
@@ -80,6 +109,39 @@ impl Control {
             self.client.secret_list(app.name.as_str(), app.owner())
         })
         .await
+    }
+
+    pub async fn account_usage(
+        &self,
+        deadline: Instant,
+        output: Output,
+    ) -> Result<control_api::AccountUsage, CliError> {
+        self.read(deadline, output, || self.client.account_usage())
+            .await
+    }
+
+    pub async fn usage(
+        &self,
+        app: &AppRef,
+        range: control_api::UsageRange,
+        deadline: Instant,
+        output: Output,
+    ) -> Result<control_api::AppUsage, CliError> {
+        self.read(deadline, output, || {
+            self.client
+                .app_usage(app.name.as_str(), app.owner(), Some(range.as_str()))
+        })
+        .await
+    }
+
+    pub async fn access(
+        &self,
+        app: &str,
+        deadline: Instant,
+        output: Output,
+    ) -> Result<control_api::AppAccess, CliError> {
+        self.read(deadline, output, || self.client.app_access_get(app))
+            .await
     }
 
     pub async fn shares(

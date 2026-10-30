@@ -23,17 +23,47 @@
             "nullable": true,
             "type": "string"
           },
+          "error": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/ErrorBody"
+              }
+            ],
+            "description": "For an app whose status is `failed`: why its host couldn't start it, and what to do.",
+            "nullable": true
+          },
+          "icon_url": {
+            "description": "Same-origin authenticated PNG endpoint; absent for the generated icon.",
+            "nullable": true,
+            "type": "string"
+          },
+          "limits": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/Limits"
+              }
+            ],
+            "description": "The numeric limits resolved at its last deploy."
+          },
+          "month_cost_microusd": {
+            "description": "This UTC month\u2019s cost, visible only to its owner.",
+            "format": "uint64",
+            "minimum": 0,
+            "nullable": true,
+            "type": "integer"
+          },
           "name": {
             "description": "The app's name, which is its folder's name.",
             "type": "string"
           },
-          "resources": {
+          "paused": {
             "allOf": [
               {
-                "$ref": "#/components/schemas/Resources"
+                "$ref": "#/components/schemas/Paused"
               }
             ],
-            "description": "The resources its `app.toml` asks for."
+            "description": "Why the platform paused the app, or null. Its data is kept.",
+            "nullable": true
           },
           "restarts": {
             "description": "How many times its host has restarted it, after it exited by itself, since the platform last started it, as a deploy or a change to its secrets does.",
@@ -64,8 +94,8 @@
           }
         },
         "required": [
+          "limits",
           "name",
-          "resources",
           "restarts",
           "running",
           "status",
@@ -73,34 +103,125 @@
         ],
         "type": "object"
       },
-      "Resources": {
-        "additionalProperties": false,
+      "ErrorBody": {
+        "description": "The body of every error: what went wrong, how to fix it, and whether trying the same request again later could work.",
         "properties": {
-          "disk_gib": {
-            "default": 10,
-            "description": "Persistent disk quota in GiB, independent of compute. Defaults to 10.",
+          "code": {
+            "description": "A stable code, such as `invalid_app_name`, that callers can match on.",
+            "type": "string"
+          },
+          "diagnostic": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/RequestDiagnostic"
+              }
+            ],
+            "description": "Platform evidence for this refusal. Absent when this source cannot supply it.",
+            "nullable": true
+          },
+          "message": {
+            "description": "What went wrong and how to fix it.",
+            "type": "string"
+          },
+          "retryable": {
+            "description": "Whether sending the same request again later is safe and could work.",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "code",
+          "message",
+          "retryable"
+        ],
+        "type": "object"
+      },
+      "RequestDiagnostic": {
+        "description": "Facts about a platform HTTP failure, never request contents or guessed causes.",
+        "properties": {
+          "component": {
+            "$ref": "#/components/schemas/DiagnosticComponent"
+          },
+          "observed_unix_ms": {
             "format": "uint64",
             "minimum": 0,
             "type": "integer"
           },
-          "size": {
+          "outcome": {
             "allOf": [
               {
-                "$ref": "#/components/schemas/Size"
+                "$ref": "#/components/schemas/DiagnosticOutcome"
               }
             ],
-            "default": "small",
-            "description": "Shared CPUs and the memory limit; small, the default, is 1 vCPU and 2 GiB."
+            "description": "`rejected` means no upstream action; `unknown` must not be retried blindly."
+          },
+          "phase": {
+            "$ref": "#/components/schemas/DiagnosticPhase"
+          },
+          "request_id": {
+            "format": "uuid",
+            "type": "string"
           }
         },
+        "required": [
+          "component",
+          "observed_unix_ms",
+          "outcome",
+          "phase",
+          "request_id"
+        ],
         "type": "object"
       },
-      "Size": {
+      "DiagnosticComponent": {
         "enum": [
-          "small",
-          "medium",
-          "large",
-          "xl"
+          "gateway"
+        ],
+        "type": "string"
+      },
+      "DiagnosticOutcome": {
+        "enum": [
+          "rejected",
+          "unknown"
+        ],
+        "type": "string"
+      },
+      "DiagnosticPhase": {
+        "enum": [
+          "admission",
+          "connecting",
+          "forwarding"
+        ],
+        "type": "string"
+      },
+      "Limits": {
+        "additionalProperties": false,
+        "properties": {
+          "cpu_millicores": {
+            "format": "uint32",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "disk_bytes": {
+            "format": "uint64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "memory_bytes": {
+            "format": "uint64",
+            "minimum": 0,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "cpu_millicores",
+          "disk_bytes",
+          "memory_bytes"
+        ],
+        "type": "object"
+      },
+      "Paused": {
+        "description": "Why the platform paused an app.",
+        "enum": [
+          "usage_limit"
         ],
         "type": "string"
       },
@@ -141,34 +262,18 @@
               "stopped"
             ],
             "type": "string"
+          },
+          {
+            "description": "Its host refused to start it, for the reason its `error` gives, such as `app_disk_missing` for a disk that isn't on its host, and runs nothing for it, so `anywhere exec` doesn't work in it. The platform doesn't try again by itself; its next deploy or change to its secrets does, if what `error` says allows.",
+            "enum": [
+              "failed"
+            ],
+            "type": "string"
           }
         ]
       },
       "Error": {
         "$ref": "#/components/schemas/ErrorBody"
-      },
-      "ErrorBody": {
-        "description": "The body of every error: what went wrong, how to fix it, and whether trying the same request again later could work.",
-        "properties": {
-          "code": {
-            "description": "A stable code, such as `invalid_app_name`, that callers can match on.",
-            "type": "string"
-          },
-          "message": {
-            "description": "What went wrong and how to fix it.",
-            "type": "string"
-          },
-          "retryable": {
-            "description": "Whether sending the same request again later is safe and could work.",
-            "type": "boolean"
-          }
-        },
-        "required": [
-          "code",
-          "message",
-          "retryable"
-        ],
-        "type": "object"
       },
       "Operation": {
         "description": "A change the platform is making, and how far it has got.",
@@ -221,7 +326,7 @@
                 "$ref": "#/components/schemas/Warning"
               }
             ],
-            "description": "For a secret change that succeeded on a web app with no address yet: why, and what gives it one. For a share that makes someone a developer: what a developer can do that removing them won't undo. For a deploy that makes its app smaller, `app_size_lowered`: what to set to keep its size.",
+            "description": "For a secret change that succeeded on a web app with no address yet: why, and what gives it one. For a share that makes someone a developer: what a developer can do that removing them won't undo. A deploy may also carry advice recorded when it was admitted.",
             "nullable": true
           }
         },
@@ -237,6 +342,13 @@
           {
             "enum": [
               "deploy"
+            ],
+            "type": "string"
+          },
+          {
+            "description": "Changes anonymous access and waits for the gateways to apply and drain it.",
+            "enum": [
+              "app_access"
             ],
             "type": "string"
           },
@@ -307,7 +419,7 @@
         "description": "The steps of a deploy, in order. The host doesn't say when the upload ends and the build starts, so both are `uploading`.",
         "oneOf": [
           {
-            "description": "Waiting for its files, writing them into `/app`, or running the app's build step there.",
+            "description": "Waiting for its files, writing them into `/app`, or running the app's build step there; for an image app, pulling its image and writing it onto the app's disk.",
             "enum": [
               "uploading"
             ],
@@ -396,6 +508,11 @@
               "$ref": "#/components/schemas/Deploy"
             },
             "type": "array"
+          },
+          "deploys_truncated": {
+            "default": false,
+            "description": "More deploys exist than this bounded history includes. Look up a known operation by ID.",
+            "type": "boolean"
           }
         },
         "required": [
@@ -447,15 +564,51 @@
         ],
         "type": "object"
       },
+      "AppAccess": {
+        "additionalProperties": false,
+        "description": "Owner-controlled anonymous access; new apps are restricted.",
+        "properties": {
+          "visibility": {
+            "$ref": "#/components/schemas/Visibility"
+          }
+        },
+        "required": [
+          "visibility"
+        ],
+        "type": "object"
+      },
+      "Visibility": {
+        "description": "Whether the app admits anonymous visitors.",
+        "enum": [
+          "restricted",
+          "public"
+        ],
+        "type": "string"
+      },
       "DeployRequest": {
         "additionalProperties": false,
         "properties": {
           "files": {
-            "description": "Every file the deploy writes into `/app`, each of which is uploaded.",
+            "description": "Every file the deploy writes into `/app`, each of which is uploaded; none for an image app, whose files come from its image.",
             "items": {
               "$ref": "#/components/schemas/FileEntry"
             },
             "type": "array"
+          },
+          "icon_png": {
+            "description": "Original PNG bytes for spec.icon. Folder apps match that file in the manifest; image apps carry the icon as metadata without runtime files.",
+            "items": {
+              "format": "uint8",
+              "minimum": 0,
+              "type": "integer"
+            },
+            "nullable": true,
+            "type": "array"
+          },
+          "new_app": {
+            "default": false,
+            "description": "Whether the deploy must make the app: one of yours of this name is `app_exists`, so a new app never replaces one. Not with `owner`.",
+            "type": "boolean"
           },
           "spec": {
             "allOf": [
@@ -512,6 +665,24 @@
             "nullable": true,
             "type": "string"
           },
+          "icon": {
+            "description": "PNG file relative to the app folder, included in the deploy.",
+            "nullable": true,
+            "type": "string"
+          },
+          "image": {
+            "description": "For an image app, the public container image each deploy pulls onto the app's disk, such as `ghcr.io/every-app/open-seo:latest`, in place of a folder's files. It runs the image's own command unless `[processes]` gives one.",
+            "nullable": true,
+            "type": "string"
+          },
+          "limits": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/LimitRequests"
+              }
+            ],
+            "description": "Optional CPU, memory and disk caps; a deploy fills omitted values from the plan ceilings."
+          },
           "port": {
             "description": "A fixed port, for a web app whose software can't read `$PORT`. A background app has none.",
             "format": "uint16",
@@ -527,13 +698,12 @@
             ],
             "description": "The app's one command. A static site has none, and leaves this out."
           },
-          "resources": {
-            "allOf": [
-              {
-                "$ref": "#/components/schemas/Resources"
-              }
-            ],
-            "description": "CPU, memory and persistent disk for builds, the app and exec commands."
+          "start_timeout": {
+            "description": "How many seconds a web app gets to start listening on its port, from 1 to 1200, whenever a deploy or a secret change starts it: 30 if it's left out. Restarts after a crash wait for nothing.",
+            "format": "uint32",
+            "minimum": 0,
+            "nullable": true,
+            "type": "integer"
           },
           "static": {
             "description": "For a static site, the folder its files are in, by its path in the app's folder, such as `public`, or `dist` for one its build step makes. The platform's helper serves them at the app's address, as a web app.",
@@ -548,6 +718,30 @@
         "required": [
           "title"
         ],
+        "type": "object"
+      },
+      "LimitRequests": {
+        "additionalProperties": false,
+        "properties": {
+          "cpu_millicores": {
+            "format": "uint32",
+            "minimum": 0,
+            "nullable": true,
+            "type": "integer"
+          },
+          "disk_bytes": {
+            "format": "uint64",
+            "minimum": 0,
+            "nullable": true,
+            "type": "integer"
+          },
+          "memory_bytes": {
+            "format": "uint64",
+            "minimum": 0,
+            "nullable": true,
+            "type": "integer"
+          }
+        },
         "type": "object"
       },
       "Processes": {
@@ -579,6 +773,47 @@
         },
         "required": [
           "names"
+        ],
+        "type": "object"
+      },
+      "SecretsRequest": {
+        "additionalProperties": false,
+        "description": "Several secrets to set in one change, each by its name.",
+        "properties": {
+          "create_app": {
+            "default": false,
+            "description": "As for one secret: whether to make the app, stopped and never deployed, if you have none of that name.",
+            "type": "boolean"
+          },
+          "secrets": {
+            "description": "The secrets, each name once, 1 to 100 of them.",
+            "items": {
+              "$ref": "#/components/schemas/NamedSecret"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "secrets"
+        ],
+        "type": "object"
+      },
+      "NamedSecret": {
+        "additionalProperties": false,
+        "description": "One secret of several, by its name.",
+        "properties": {
+          "name": {
+            "description": "The environment variable the app reads it from, as for one secret.",
+            "type": "string"
+          },
+          "value": {
+            "description": "Its value, as for one secret.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "value"
         ],
         "type": "object"
       },
@@ -750,14 +985,600 @@
         ],
         "type": "object"
       },
+      "AppUsage": {
+        "description": "What an app used over a range, against its limits, and what to change if it ran into them.",
+        "properties": {
+          "app": {
+            "description": "The app's name.",
+            "type": "string"
+          },
+          "cost": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/UsageCost"
+              }
+            ],
+            "description": "This calendar month\u2019s dollars; only the owner sees them.",
+            "nullable": true
+          },
+          "disk_used_bytes": {
+            "description": "What its disk holds, from the newest reading that had it, whether or not the app runs now. None before its first.",
+            "format": "uint64",
+            "minimum": 0,
+            "nullable": true,
+            "type": "integer"
+          },
+          "from": {
+            "description": "Where the range starts: `to` minus the range.",
+            "format": "date-time",
+            "type": "string"
+          },
+          "gaps": {
+            "description": "Each stretch of whole steps with no reading, since the app's first reading, oldest first, such as while it was stopped or had crashed, or its host couldn't read it. Before its first reading there's no stretch.",
+            "items": {
+              "$ref": "#/components/schemas/UsageGap"
+            },
+            "type": "array"
+          },
+          "latest": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/LatestUsage"
+              }
+            ],
+            "description": "The newest reading, if it's under 90 seconds old. None while the app isn't running. It's \"now\" in every range.",
+            "nullable": true
+          },
+          "limits": {
+            "$ref": "#/components/schemas/UsageLimits"
+          },
+          "points": {
+            "description": "One for each step that had a reading, oldest first. A step with none has no point, never one of zeros.",
+            "items": {
+              "$ref": "#/components/schemas/UsagePoint"
+            },
+            "type": "array"
+          },
+          "problems": {
+            "description": "What the app ran into since `problems_from`, each with what to change.",
+            "items": {
+              "$ref": "#/components/schemas/UsageProblem"
+            },
+            "type": "array"
+          },
+          "problems_from": {
+            "description": "Where `problems` count from: the app's newest deploy, if it's in the range, and else `from`. Their counts start with the first step that starts at or after it, so a problem a deploy fixed doesn't linger, and its words use the limits that ran.",
+            "format": "date-time",
+            "type": "string"
+          },
+          "range": {
+            "$ref": "#/components/schemas/UsageRange"
+          },
+          "restarts": {
+            "description": "How many times its host has restarted it since its last deploy or change to its secrets, as on `App`.",
+            "format": "uint32",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "status": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/AppStatus"
+              }
+            ],
+            "description": "How the app is doing now, as on `App`."
+          },
+          "step_seconds": {
+            "description": "How long each point's step is: 30, 300 or 3600 seconds.",
+            "format": "uint32",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "to": {
+            "description": "When the answer was made.",
+            "format": "date-time",
+            "type": "string"
+          },
+          "totals": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/UsageTotals"
+              }
+            ],
+            "description": "Over the whole range, from the points."
+          }
+        },
+        "required": [
+          "app",
+          "from",
+          "gaps",
+          "limits",
+          "points",
+          "problems",
+          "problems_from",
+          "range",
+          "restarts",
+          "status",
+          "step_seconds",
+          "to",
+          "totals"
+        ],
+        "type": "object"
+      },
+      "UsageCost": {
+        "description": "Whole micro-dollars charged this UTC calendar month, and its forecast.",
+        "properties": {
+          "cpu_microusd": {
+            "format": "uint64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "disk_microusd": {
+            "format": "uint64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "egress_microusd": {
+            "format": "uint64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "forecast_microusd": {
+            "format": "uint64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "memory_microusd": {
+            "format": "uint64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "used_microusd": {
+            "format": "uint64",
+            "minimum": 0,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "cpu_microusd",
+          "disk_microusd",
+          "egress_microusd",
+          "forecast_microusd",
+          "memory_microusd",
+          "used_microusd"
+        ],
+        "type": "object"
+      },
+      "UsageGap": {
+        "description": "A stretch of whole steps with no reading.",
+        "properties": {
+          "from": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "to": {
+            "description": "None while it goes on now.",
+            "format": "date-time",
+            "nullable": true,
+            "type": "string"
+          }
+        },
+        "required": [
+          "from"
+        ],
+        "type": "object"
+      },
+      "LatestUsage": {
+        "description": "The newest reading.",
+        "properties": {
+          "at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "cpu_millicores": {
+            "description": "Its CPU over the time since the reading before, in thousandths of a CPU.",
+            "format": "uint64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "memory_bytes": {
+            "description": "What its sandbox holds on the host, gVisor's own included but not the files it has cached, so below what `free` shows inside the app.",
+            "format": "uint64",
+            "minimum": 0,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "at",
+          "cpu_millicores",
+          "memory_bytes"
+        ],
+        "type": "object"
+      },
+      "UsageLimits": {
+        "description": "The app's resolved limits.",
+        "properties": {
+          "cpu_millicores": {
+            "description": "Its shared CPUs, in thousandths of a CPU.",
+            "format": "uint64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "disk_bytes": {
+            "description": "Its disk quota, in bytes.",
+            "format": "uint64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "memory_bytes": {
+            "description": "Its memory cap.",
+            "format": "uint64",
+            "minimum": 0,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "cpu_millicores",
+          "disk_bytes",
+          "memory_bytes"
+        ],
+        "type": "object"
+      },
+      "UsagePoint": {
+        "description": "What the app used in one step.",
+        "properties": {
+          "at": {
+            "description": "The step's start, or in the 1h range, the reading's time, its counts covering the `seconds` before it.",
+            "format": "date-time",
+            "type": "string"
+          },
+          "bytes_in": {
+            "format": "uint64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "bytes_out": {
+            "format": "uint64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "cost_microusd": {
+            "description": "The step's cost at the price book effective at `at`, in integer micro-dollars, with each component rounded down. Priced from this step's averages and seconds, so it may differ from the hourly ledger. None for a developer; only the owner sees costs.",
+            "format": "uint64",
+            "minimum": 0,
+            "nullable": true,
+            "type": "integer"
+          },
+          "cpu_avg_millicores": {
+            "description": "Its CPU over `seconds`, in thousandths of a CPU.",
+            "format": "uint64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "cpu_peak_millicores": {
+            "description": "The highest of its readings' in the step, each over the time it covers.",
+            "format": "uint64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "cpu_throttled_seconds": {
+            "format": "double",
+            "type": "number"
+          },
+          "disk_used_bytes": {
+            "description": "The most its disk held in the step, or None if no reading in it had its disk.",
+            "format": "uint64",
+            "minimum": 0,
+            "nullable": true,
+            "type": "integer"
+          },
+          "memory_avg_bytes": {
+            "format": "uint64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "memory_peak_bytes": {
+            "format": "uint64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "oom_kills": {
+            "format": "uint64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "seconds": {
+            "description": "The time its counts cover: for each reading, the time since the one before, so more than a step after missed reports while the app ran on, and at most 30 for a run's first reading. Divide rates by this, not `step_seconds`, so a step the app ran part of isn't diluted.",
+            "format": "uint32",
+            "minimum": 0,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "at",
+          "bytes_in",
+          "bytes_out",
+          "cpu_avg_millicores",
+          "cpu_peak_millicores",
+          "cpu_throttled_seconds",
+          "memory_avg_bytes",
+          "memory_peak_bytes",
+          "oom_kills",
+          "seconds"
+        ],
+        "type": "object"
+      },
+      "UsageProblem": {
+        "description": "Something the app ran into over the range, and what to do about it.",
+        "properties": {
+          "agent_prompt": {
+            "description": "What \"Copy for your agent\" copies: the app, what happened and what to change, with the app's title quoted as JSON writes a string.",
+            "type": "string"
+          },
+          "change": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/ResourceChange"
+              }
+            ],
+            "description": "The one `app.toml` edit that fixes it, which an agent can apply and deploy, or None when no edit can, as for a large app that runs out of memory.",
+            "nullable": true
+          },
+          "code": {
+            "$ref": "#/components/schemas/UsageProblemCode"
+          },
+          "fix": {
+            "description": "What to do, in words for a person and an agent alike: the `app.toml` line to change and `anywhere deploy`, or what else would help.",
+            "type": "string"
+          },
+          "last_at": {
+            "description": "For `oom_kills`: the `at` of the last point that counted a kill: in the 1h range, the reading after it, as the run that ran out is never read itself; in the others, the start of the step of `step_seconds` whose readings counted it.",
+            "format": "date-time",
+            "nullable": true,
+            "type": "string"
+          },
+          "message": {
+            "description": "What happened, with its numbers, in a sentence or two, and no time of day: `last_at` has that.",
+            "type": "string"
+          },
+          "needs_plan": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/Plan"
+              }
+            ],
+            "description": "The plan `change` needs, which the app's owner doesn't have: theirs to buy, never an agent's.",
+            "nullable": true
+          },
+          "severity": {
+            "$ref": "#/components/schemas/UsageSeverity"
+          },
+          "upgrade_url": {
+            "description": "Where the owner buys it, where this platform sells it.",
+            "nullable": true,
+            "type": "string"
+          }
+        },
+        "required": [
+          "agent_prompt",
+          "code",
+          "fix",
+          "message",
+          "severity"
+        ],
+        "type": "object"
+      },
+      "ResourceChange": {
+        "description": "One edit of the app's `app.toml`: set `key` to `value` under `[table]`.",
+        "properties": {
+          "file": {
+            "description": "Always `app.toml`.",
+            "type": "string"
+          },
+          "key": {
+            "$ref": "#/components/schemas/ResourceKey"
+          },
+          "table": {
+            "description": "Always `limits`.",
+            "type": "string"
+          },
+          "value": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/ResourceValue"
+              }
+            ],
+            "description": "vCPUs for CPU, or a whole MiB or GiB string for memory and disk."
+          }
+        },
+        "required": [
+          "file",
+          "key",
+          "table",
+          "value"
+        ],
+        "type": "object"
+      },
+      "ResourceKey": {
+        "enum": [
+          "cpu",
+          "memory",
+          "disk"
+        ],
+        "type": "string"
+      },
+      "ResourceValue": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "format": "double",
+            "type": "number"
+          }
+        ]
+      },
+      "UsageProblemCode": {
+        "description": "A problem's stable code.",
+        "oneOf": [
+          {
+            "description": "It ran out of memory at least once, and was ended and restarted.",
+            "enum": [
+              "oom_kills"
+            ],
+            "type": "string"
+          },
+          {
+            "description": "It was held at its CPU limit at least 5% of the time it ran.",
+            "enum": [
+              "cpu_limited"
+            ],
+            "type": "string"
+          },
+          {
+            "description": "Its disk is at least 90% full.",
+            "enum": [
+              "disk_nearly_full"
+            ],
+            "type": "string"
+          },
+          {
+            "description": "Its disk is at least 99% full, so its writes are failing.",
+            "enum": [
+              "disk_full"
+            ],
+            "type": "string"
+          }
+        ]
+      },
+      "Plan": {
+        "description": "An account's plan, which limits its apps (`PlanLimits`).",
+        "enum": [
+          "free",
+          "pro"
+        ],
+        "type": "string"
+      },
+      "UsageSeverity": {
+        "description": "How bad a problem is: a failure ended something, such as the app's processes or its writes; a caution slowed it or will soon.",
+        "enum": [
+          "failure",
+          "caution"
+        ],
+        "type": "string"
+      },
+      "UsageRange": {
+        "description": "A range of usage, up to now, and the step its points are made at.",
+        "oneOf": [
+          {
+            "description": "The last hour: a point for each 30-second reading.",
+            "enum": [
+              "1h"
+            ],
+            "type": "string"
+          },
+          {
+            "description": "The last 24 hours, in 5-minute steps.",
+            "enum": [
+              "24h"
+            ],
+            "type": "string"
+          },
+          {
+            "description": "The last 7 days, in hours.",
+            "enum": [
+              "7d"
+            ],
+            "type": "string"
+          },
+          {
+            "description": "The last 30 days, in hours.",
+            "enum": [
+              "30d"
+            ],
+            "type": "string"
+          }
+        ]
+      },
+      "UsageTotals": {
+        "description": "What the app used over the whole range. Averages and peaks are None with no readings; sums are 0.",
+        "properties": {
+          "bytes_in": {
+            "description": "What it received and sent over its network link.",
+            "format": "uint64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "bytes_out": {
+            "format": "uint64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "cpu_avg_millicores": {
+            "description": "Its CPU over the seconds with readings, in thousandths of a CPU.",
+            "format": "uint64",
+            "minimum": 0,
+            "nullable": true,
+            "type": "integer"
+          },
+          "cpu_peak_millicores": {
+            "description": "The highest of its readings', each over the time it covers.",
+            "format": "uint64",
+            "minimum": 0,
+            "nullable": true,
+            "type": "integer"
+          },
+          "cpu_throttled_seconds": {
+            "description": "How long it was held back for wanting more than its CPU limit.",
+            "format": "double",
+            "type": "number"
+          },
+          "memory_avg_bytes": {
+            "format": "uint64",
+            "minimum": 0,
+            "nullable": true,
+            "type": "integer"
+          },
+          "memory_peak_bytes": {
+            "format": "uint64",
+            "minimum": 0,
+            "nullable": true,
+            "type": "integer"
+          },
+          "oom_kills": {
+            "description": "How many times it ran out of memory, each time ended and restarted.",
+            "format": "uint64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "seconds_with_readings": {
+            "description": "The time the points' counts cover, the sum of their `seconds`. It starts at an app's first reading, which only starts its counts.",
+            "format": "uint64",
+            "minimum": 0,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "bytes_in",
+          "bytes_out",
+          "cpu_throttled_seconds",
+          "oom_kills",
+          "seconds_with_readings"
+        ],
+        "type": "object"
+      },
       "Me": {
         "description": "Who's signed in, their plan and how much of it their apps use.",
         "properties": {
           "apps": {
-            "description": "How many apps the account has: those `GET /v1/apps` lists, which `limits.apps` caps.",
+            "description": "How many apps the account has: those `GET /v1/apps` lists, which `limits.max_apps` caps when present.",
             "format": "uint32",
             "minimum": 0,
             "type": "integer"
+          },
+          "apps_origin": {
+            "description": "Canonical apps namespace and port, for the CLI to name an app's URL before its first deploy.",
+            "type": "string"
           },
           "billing": {
             "allOf": [
@@ -789,6 +1610,7 @@
         },
         "required": [
           "apps",
+          "apps_origin",
           "billing",
           "limits",
           "plan",
@@ -806,6 +1628,11 @@
           "customer": {
             "description": "Whether the account has paid through Stripe, so Stripe's billing page (`POST /v1/billing/portal`) can show and cancel what it pays.",
             "type": "boolean"
+          },
+          "upgrade_url": {
+            "description": "Where a person upgrades to Pro, the portal's billing page, such as `https://anywhere.so/billing`, on a platform that sells it. A plan's refusal offers it to an owner on Free.",
+            "nullable": true,
+            "type": "string"
           }
         },
         "required": [
@@ -815,50 +1642,38 @@
         "type": "object"
       },
       "PlanLimits": {
-        "description": "What a plan allows. A deploy or a new app that asks for more is refused with `plan_app_limit`, `plan_size_unavailable` or `plan_disk_limit`, while what an app already has is never taken away.",
+        "description": "Current plan ceilings. App caps apply at the next deploy; max_apps blocks only the first deploy of a new app and never removes existing apps.",
         "properties": {
-          "app_disk_gib": {
-            "description": "The most disk each app may have, in GiB, on a plan that limits each app's, as Free does.",
-            "format": "uint64",
-            "minimum": 0,
-            "nullable": true,
-            "type": "integer"
-          },
-          "apps": {
-            "description": "The most apps the account may have.",
+          "cpu_millicores": {
             "format": "uint32",
             "minimum": 0,
             "type": "integer"
           },
-          "largest_size": {
-            "allOf": [
-              {
-                "$ref": "#/components/schemas/Size"
-              }
-            ],
-            "description": "The largest size an app may have."
-          },
-          "total_disk_gib": {
-            "description": "The most disk the account's apps may have together, in GiB, on a plan that limits their total, as Pro does.",
+          "disk_bytes": {
             "format": "uint64",
             "minimum": 0,
+            "type": "integer"
+          },
+          "max_apps": {
+            "description": "The most deployed, non-deleted apps, including the Drive; null is unlimited.",
+            "format": "uint32",
+            "minimum": 0,
             "nullable": true,
+            "type": "integer"
+          },
+          "memory_bytes": {
+            "format": "uint64",
+            "minimum": 0,
             "type": "integer"
           }
         },
         "required": [
-          "apps",
-          "largest_size"
+          "cpu_millicores",
+          "disk_bytes",
+          "max_apps",
+          "memory_bytes"
         ],
         "type": "object"
-      },
-      "Plan": {
-        "description": "An account's plan, which limits its apps (`PlanLimits`).",
-        "enum": [
-          "free",
-          "pro"
-        ],
-        "type": "string"
       },
       "SharedAppList": {
         "description": "The apps shared with you.",
@@ -877,6 +1692,11 @@
       },
       "SharedApp": {
         "properties": {
+          "icon_url": {
+            "description": "Same-origin authenticated PNG endpoint.",
+            "nullable": true,
+            "type": "string"
+          },
           "name": {
             "description": "The app's name.",
             "type": "string"
@@ -884,6 +1704,15 @@
           "owner": {
             "description": "The owner's username.",
             "type": "string"
+          },
+          "paused": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/Paused"
+              }
+            ],
+            "description": "Whether the platform paused the app, or null. Its data is kept.",
+            "nullable": true
           },
           "role": {
             "allOf": [
@@ -905,6 +1734,217 @@
           "url"
         ],
         "type": "object"
+      },
+      "AccountUsage": {
+        "description": "The signed-in account alone. Percentages round down and may exceed 100.",
+        "properties": {
+          "apps": {
+            "items": {
+              "$ref": "#/components/schemas/AccountAppUsage"
+            },
+            "type": "array"
+          },
+          "available_microusd": {
+            "description": "This month's included amount plus grants made before its end, minus earlier UTC months' overage, floored at zero. Remaining usage is this amount minus used_microusd; the limit is reached when used >= available.",
+            "format": "uint64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "charged_through": {
+            "description": "The end of the newest charged hour, or null before any charges this month.",
+            "format": "date-time",
+            "nullable": true,
+            "type": "string"
+          },
+          "enforced": {
+            "type": "boolean"
+          },
+          "forecast_microusd": {
+            "format": "uint64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "forecast_percent": {
+            "format": "uint64",
+            "minimum": 0,
+            "nullable": true,
+            "type": "integer"
+          },
+          "included_microusd": {
+            "format": "uint64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "percent_used": {
+            "description": "Null when the available amount is zero: no finite percentage exists.",
+            "format": "uint64",
+            "minimum": 0,
+            "nullable": true,
+            "type": "integer"
+          },
+          "period": {
+            "$ref": "#/components/schemas/UsagePeriod"
+          },
+          "plan": {
+            "$ref": "#/components/schemas/Plan"
+          },
+          "rates": {
+            "$ref": "#/components/schemas/UsageRates"
+          },
+          "state": {
+            "$ref": "#/components/schemas/UsageState"
+          },
+          "topup_amounts_microusd": {
+            "description": "Top-up amounts offered by the account's current plan terms.",
+            "items": {
+              "format": "uint64",
+              "minimum": 0,
+              "type": "integer"
+            },
+            "type": "array"
+          },
+          "topup_balance_microusd": {
+            "description": "Available usage left after this month's charges, floored at zero.",
+            "format": "uint64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "used_microusd": {
+            "format": "uint64",
+            "minimum": 0,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "apps",
+          "available_microusd",
+          "enforced",
+          "forecast_microusd",
+          "included_microusd",
+          "period",
+          "plan",
+          "rates",
+          "state",
+          "topup_amounts_microusd",
+          "topup_balance_microusd",
+          "used_microusd"
+        ],
+        "type": "object"
+      },
+      "AccountAppUsage": {
+        "description": "Whole micro-dollars charged this UTC calendar month, and its forecast.",
+        "properties": {
+          "app": {
+            "type": "string"
+          },
+          "cpu_microusd": {
+            "format": "uint64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "deleted": {
+            "type": "boolean"
+          },
+          "disk_microusd": {
+            "format": "uint64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "egress_microusd": {
+            "format": "uint64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "forecast_microusd": {
+            "format": "uint64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "memory_microusd": {
+            "format": "uint64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "title": {
+            "type": "string"
+          },
+          "used_microusd": {
+            "format": "uint64",
+            "minimum": 0,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "app",
+          "cpu_microusd",
+          "deleted",
+          "disk_microusd",
+          "egress_microusd",
+          "forecast_microusd",
+          "memory_microusd",
+          "title",
+          "used_microusd"
+        ],
+        "type": "object"
+      },
+      "UsagePeriod": {
+        "properties": {
+          "from": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "resets_at": {
+            "format": "date-time",
+            "type": "string"
+          }
+        },
+        "required": [
+          "from",
+          "resets_at"
+        ],
+        "type": "object"
+      },
+      "UsageRates": {
+        "description": "Published rates. A disk month is 730 hours.",
+        "properties": {
+          "cpu_vcpu_hour_microusd": {
+            "format": "uint64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "disk_gib_month_microusd": {
+            "format": "uint64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "egress_gib_microusd": {
+            "format": "uint64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "memory_gib_hour_microusd": {
+            "format": "uint64",
+            "minimum": 0,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "cpu_vcpu_hour_microusd",
+          "disk_gib_month_microusd",
+          "egress_gib_microusd",
+          "memory_gib_hour_microusd"
+        ],
+        "type": "object"
+      },
+      "UsageState": {
+        "description": "The account's usage against its available amount, even with enforcement off.",
+        "enum": [
+          "ok",
+          "warned_75",
+          "warned_90",
+          "stopped"
+        ],
+        "type": "string"
       },
       "CliLoginRequest": {
         "additionalProperties": false,
@@ -1008,7 +2048,7 @@
     }
   },
   "info": {
-    "description": "Contract 2. The `anywhere` CLI says so in every request's User-Agent, `anywhere/<version> (contract 2)`, and the gateway refuses a CLI built for another contract, or one from before them (`anywhere/<version>` alone), with 400 `cli_outdated` before the request reaches this API, whatever its route or body. Its message says how to install the CLI this platform serves. Other clients are told nothing.",
+    "description": "Contract 5. The `anywhere` CLI says so in every request's User-Agent, `anywhere/<version> (contract 5)`, and the gateway refuses a CLI built for another contract, or one from before them (`anywhere/<version>` alone), with 400 `cli_outdated` before the request reaches this API, whatever its route or body. Its message says how to install the CLI this platform serves. Other clients are told nothing.",
     "title": "Control API",
     "version": "0.1.0"
   },
@@ -1126,9 +2166,88 @@
         "summary": "One of your apps, or one you're a developer of, with its newest deploys."
       }
     },
+    "/v1/apps/{app}/access": {
+      "get": {
+        "operationId": "app_access_get",
+        "parameters": [
+          {
+            "description": "The app's name, which is its folder's name.",
+            "in": "path",
+            "name": "app",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccess"
+                }
+              }
+            },
+            "description": "successful operation"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "summary": "Reads whether one of your apps admits anonymous visitors. Owner only."
+      },
+      "put": {
+        "description": "everyone, without granting platform management access. Restricted cuts off anonymous requests and WebSockets before the operation succeeds.",
+        "operationId": "app_access_set",
+        "parameters": [
+          {
+            "description": "The app's name, which is its folder's name.",
+            "in": "path",
+            "name": "app",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AppAccess"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Operation"
+                }
+              }
+            },
+            "description": "successfully enqueued operation"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "summary": "Changes anonymous access. Public exposes the app's pages and actions to"
+      }
+    },
     "/v1/apps/{app}/deploys": {
       "post": {
-        "description": "It takes the app's `app.toml` and the list of its files. The deploy runs in the background: check its operation, and upload every file when it asks. It writes each file at `/app/<path>` on the app's disk, replacing what's there and touching nothing else, runs the app's build there, and then starts the app on what its disk holds, even if the build failed. Without `owner`, a deploy makes your app if you have none by its name; with it, the app must be one you're a developer of.",
+        "description": "It takes the app's `app.toml` and the list of its files. The deploy runs in the background: check its operation, and upload every file when it asks. It writes each file at `/app/<path>` on the app's disk, replacing what's there and touching nothing else, runs the app's build there, and then starts the app on what its disk holds, even if the build failed. An image app's deploy lists no files: it pulls the image `app.toml` names and writes its files over the app's disk, deleting nothing, and an app whose disk was made for the other kind is `image_disk_mismatch`. Without `owner`, a deploy makes your app if you have none by its name, and with `new_app`, only then; with `owner`, the app must be one you're a developer of. While the host your apps run on is full, a deploy that would make a new app is refused with `host_full` (503, retryable), and nothing is made: try again later. Your apps already there still deploy.",
         "operationId": "deploy_create",
         "parameters": [
           {
@@ -1183,7 +2302,7 @@
     },
     "/v1/apps/{app}/logs": {
       "get": {
-        "description": "It's what the app printed in its latest run and the run before, each at most its newest 1 MiB, with what its deploys and builds printed, and timed lines of the platform's own, starting `[anywhere `, saying when each run, deploy and build started and ended. With `follow`, the answer goes on with what the app prints next, through its restarts and deploys, until the caller closes it. The bytes are as the app printed them, control characters and all, as `application/octet-stream`.",
+        "description": "It's what the app printed in its latest run and the run before, each at most its newest 1 MiB, with what its deploys and builds printed, and timed lines of the platform's own, starting `[anywhere `, saying when each run, deploy and build started and ended. With `follow`, the answer goes on with what the app prints next, through its restarts and deploys, for 30 minutes, when the platform ends it so the caller asks again. Without `follow`, the answer is the bytes as the app printed them, control characters and all, as `application/octet-stream`. With it, it's Server-Sent Events, `text/event-stream`: each part of the log is an event whose `data` is its bytes in base64 and whose `id` says where the log is after it, and a comment, `:`, comes after 20 seconds with nothing else, so a reader that hears nothing for a minute knows the connection dropped. A follow that ends, however it ends, is asked for again with `after` set to the last event's `id`, which sends only what follows it; a refusal then says if the caller's access ended. An `after` from before the platform restarted on the app's host reads the whole log again, after a `resume_lost` notice. `after=end` with `follow=false` answers only where the log ends now, as one empty event, for a caller to follow from.",
         "operationId": "app_logs",
         "parameters": [
           {
@@ -1193,6 +2312,24 @@
             "required": true,
             "schema": {
               "type": "string"
+            }
+          },
+          {
+            "description": "With `follow`, the `id` of the last event an earlier follow sent: send only what follows it. `end` starts at the current end instead, sending an empty first event with that place before any new output.",
+            "in": "query",
+            "name": "after",
+            "schema": {
+              "nullable": true,
+              "type": "string"
+            }
+          },
+          {
+            "description": "Return structured output and completeness notices even for a finite read.",
+            "in": "query",
+            "name": "events",
+            "schema": {
+              "nullable": true,
+              "type": "boolean"
             }
           },
           {
@@ -1269,6 +2406,59 @@
           }
         },
         "summary": "The names of an app's secrets, in order. Their values never come back."
+      },
+      "patch": {
+        "description": "Each is as `PUT /v1/apps/{app}/secrets/{name}` sets one, and the change is one operation that restarts a running app once. All are set, or none: a name that isn't allowed, one given twice, a value that isn't, or a change past the app's limits refuses the whole request, naming the secret but never its value. It sets 1 to 100 secrets, in a request of at most 2103616 bytes, and leaves the app's others as they are. `create_app`, and sending it again, are as for one secret.",
+        "operationId": "secrets_set",
+        "parameters": [
+          {
+            "description": "The app's name, which is its folder's name.",
+            "in": "path",
+            "name": "app",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "The username of the app's owner, for an app whose owner made you a developer. Without it, the app is yours.",
+            "in": "query",
+            "name": "owner",
+            "schema": {
+              "nullable": true,
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SecretsRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Operation"
+                }
+              }
+            },
+            "description": "successfully enqueued operation"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "summary": "Sets several of an app's secrets at once, in one change."
       }
     },
     "/v1/apps/{app}/secrets/{name}": {
@@ -1568,6 +2758,60 @@
         "summary": "A ticket that opens a service of an app through the gateway."
       }
     },
+    "/v1/apps/{app}/usage": {
+      "get": {
+        "description": "The app is yours, or one you're a developer of, as for its logs. Its host reads what it uses every 30 seconds while it runs. The answer has its limits, its newest reading, its disk, totals over the range, the stretches with no reading, a point for each step that had one, and the problems it ran into: running out of memory, being held at its CPU limit at least 5% of the time, or a disk at least 90% full, each with the `app.toml` change that fixes it. These thresholds are starting values, not measured ones. It changes nothing, so it's always safe to ask again.",
+        "operationId": "app_usage",
+        "parameters": [
+          {
+            "description": "The app's name, which is its folder's name.",
+            "in": "path",
+            "name": "app",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "The username of the app's owner, for an app whose owner made you a developer. Without it, the app is yours.",
+            "in": "query",
+            "name": "owner",
+            "schema": {
+              "nullable": true,
+              "type": "string"
+            }
+          },
+          {
+            "description": "The range: `1h`, `24h`, `7d` or `30d`, up to now. Without it, `24h`; anything else is `range_invalid`.",
+            "in": "query",
+            "name": "range",
+            "schema": {
+              "nullable": true,
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppUsage"
+                }
+              }
+            },
+            "description": "successful operation"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "summary": "What an app used over a range, against its limits."
+      }
+    },
     "/v1/me": {
       "get": {
         "description": "The plan's limits, and how many apps they have, which it caps.",
@@ -1637,6 +2881,42 @@
         "summary": "An operation's progress. Every change returns one."
       }
     },
+    "/v1/operations/{operation}/cancel": {
+      "post": {
+        "description": "The deploy ends at once, failed with `deploy_cancelled`, so the app is no longer busy and the next deploy, secret change or delete goes ahead. Its owner and its developers cancel it. Nothing is rolled back and nothing is deleted: a deploy cancelled while it received its files or built leaves the files it had written, and the app starts again on what its disk holds; one cancelled while its app started leaves the app starting, or restarting after it exits, on its disk. Cancelling it again answers the same; a deploy that had already ended is `operation_ended`, and any other operation `operation_not_cancellable`.",
+        "operationId": "operation_cancel",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "operation",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Operation"
+                }
+              }
+            },
+            "description": "successful operation"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "summary": "Cancels a deploy under way, and answers it as it is once cancelled."
+      }
+    },
     "/v1/shared-apps": {
       "get": {
         "description": "Each says what you may do with it: open it, or change it too.",
@@ -1660,6 +2940,30 @@
           }
         },
         "summary": "The apps others have shared with you, by owner and name."
+      }
+    },
+    "/v1/usage": {
+      "get": {
+        "operationId": "account_usage",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AccountUsage"
+                }
+              }
+            },
+            "description": "successful operation"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "summary": "This signed-in account\u2019s usage and dollars for the UTC calendar month."
       }
     },
     "/v2/cli-logins": {

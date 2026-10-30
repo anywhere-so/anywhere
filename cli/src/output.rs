@@ -28,6 +28,10 @@ pub enum ResultData {
     Licenses {
         text: String,
     },
+    /// Only `anywhere token` deliberately prints this credential.
+    Token {
+        token: String,
+    },
     Check(Summary),
     Pull(crate::pull::PullSummary),
     /// Your apps, and the apps others have shared with you.
@@ -35,10 +39,9 @@ pub enum ResultData {
         apps: Vec<App>,
         shared: Vec<SharedApp>,
     },
-    App(AppDetails),
+    App(Box<AppDetails>),
     Operation(OperationSummary),
-    /// A background app's deploy has no `url`. One that made the app smaller
-    /// says so in `warning`, which was shown as the deploy started too.
+    /// A background app's deploy has no `url`.
     Deploy {
         operation: Uuid,
         app: String,
@@ -48,6 +51,7 @@ pub enum ResultData {
     },
     Secrets(SecretList),
     Shares(ShareList),
+    Access(control_api::AppAccess),
     /// A share that every gateway admits, the link to send its person, and,
     /// for one that makes them a developer, what that lets them do.
     Shared {
@@ -74,6 +78,9 @@ pub enum ResultData {
     Skill {
         installed: Vec<crate::skill::Installed>,
     },
+    /// An app’s full usage answer over a range.
+    Usage(Box<crate::usage::Usage>),
+    AccountUsage(Box<crate::usage::Account>),
 }
 
 /// Explicitly omit upload URLs and missing hashes: they are capabilities,
@@ -208,12 +215,33 @@ impl Output {
         }
     }
 
+    pub fn log_notice(self, notice: control_api::LogNotice) {
+        if self.json {
+            eprintln!(
+                "{}",
+                json!({"event":"evidence", "source":"host", "code":notice.code(),
+                "message":notice.message(), "operation":self.operation})
+            );
+        } else {
+            eprintln!(
+                "Platform evidence (host, {}): {}",
+                notice.code(),
+                notice.message()
+            );
+        }
+    }
+
     pub fn failure(self, error: &CliError) {
+        let diagnostic = match error {
+            CliError::Api(body) | CliError::OperationFailed(body) => body.diagnostic.as_ref(),
+            CliError::DeployFailed { error: body, .. } => body.diagnostic.as_ref(),
+            _ => None,
+        };
         if self.json {
             eprintln!(
                 "{}",
                 json!({"event":"error", "code":error.code(), "message":error.to_string(),
-                "retryable":!self.starts_deploy && error.is_temporary(), "operation":self.operation})
+                "retryable":!self.starts_deploy && error.is_temporary(), "operation":self.operation, "diagnostic":diagnostic})
             );
         } else {
             match error {
@@ -233,6 +261,16 @@ impl Output {
                     plain(&error.to_string())
                 ),
             }
+            if let Some(evidence) = diagnostic {
+                eprintln!(
+                    "Platform evidence: {} / {}; outcome {}; request {}; observed {} ms since Unix epoch",
+                    plain(&evidence.component.to_string()),
+                    plain(&evidence.phase.to_string()),
+                    plain(&evidence.outcome.to_string()),
+                    evidence.request_id,
+                    evidence.observed_unix_ms
+                );
+            }
             if let Some(id) = self.operation {
                 eprintln!("Check it with: anywhere operations get {id}");
             }
@@ -250,13 +288,33 @@ fn show(result: ResultData) {
                 plain(&app)
             ),
         },
-        ResultData::Check(summary) => println!(
-            "{}: valid; {} files, {} bytes; {} bytes of deploy JSON",
-            plain(&summary.name),
-            summary.file_count,
-            summary.total_bytes,
-            summary.request_bytes
-        ),
+        ResultData::Check(summary) => {
+            let plan = match (summary.plan, &summary.unchecked) {
+                (Some(control_api::Plan::Free), _) => "your Free plan allows it".to_owned(),
+                (Some(control_api::Plan::Pro), _) => "your Pro plan allows it".to_owned(),
+                (None, Some(why)) => plain(why),
+                (None, None) => "your plan wasn't checked".to_owned(),
+            };
+            match &summary.image {
+                Some(image) => println!(
+                    "{}: valid; deploys the image {}, and no files; {} bytes of deploy JSON; {plan}",
+                    plain(&summary.name),
+                    plain(image),
+                    summary.request_bytes
+                ),
+                None => println!(
+                    "{}: valid; {} files, {} bytes; {} bytes of deploy JSON; {plan}",
+                    plain(&summary.name),
+                    summary.file_count,
+                    summary.total_bytes,
+                    summary.request_bytes
+                ),
+            }
+            if let Some(url) = summary.url {
+                println!("url: {}", plain(&url));
+            }
+        }
+        ResultData::Token { token } => println!("{token}"),
         ResultData::Pull(summary) => println!("{}", plain(&summary.dir)),
         ResultData::Apps { apps, shared } => {
             if apps.is_empty() && shared.is_empty() {
@@ -285,7 +343,14 @@ fn show(result: ResultData) {
                 );
             }
         }
-        ResultData::App(details) => show_app(details),
+        ResultData::App(details) => show_app(*details),
+        ResultData::Access(access) => println!(
+            "{}",
+            match access.visibility {
+                control_api::Visibility::Public => "public",
+                control_api::Visibility::Restricted => "restricted",
+            }
+        ),
         ResultData::Shares(list) => {
             if list.shares.is_empty() {
                 println!("Not shared with anyone yet.");
@@ -349,6 +414,16 @@ fn show(result: ResultData) {
                 );
             }
         }
+        ResultData::AccountUsage(account) => print!("{}", crate::usage::account_text(&account)),
+        ResultData::Usage(usage) => {
+            let (text, next) = crate::usage::text(&usage);
+            print!("{text}");
+            // As `anywhere pull` prints them: the command alone, so it pastes.
+            if let Some((command, note)) = next {
+                eprintln!("next: {}", plain(&command));
+                eprintln!("note: {}", plain(note));
+            }
+        }
         ResultData::Secrets(list) => {
             if list.names.is_empty() {
                 println!("No secrets yet.");
@@ -369,17 +444,24 @@ fn show_app(details: AppDetails) {
         status(app),
         address(app.url.as_deref())
     );
+    if let Some(error) = &app.error {
+        println!("{}: {}", plain(&error.code), plain(&error.message));
+    }
     println!(
-        "Requested resources: {} ({} shared vCPUs, {} GiB memory), {} GiB disk",
-        app.resources.size,
-        app.resources.size.millicpus() / 1000,
-        app.resources.size.memory_bytes() >> 30,
-        app.resources.disk_gib
+        "Limits: {} · {} memory · {} disk",
+        control_api::words::cpu_limit(u64::from(app.limits.cpu_millicores)),
+        control_api::words::byte_limit(app.limits.memory_bytes),
+        control_api::words::byte_limit(app.limits.disk_bytes)
     );
     if let Some(at) = app.deployed_at {
         println!("Last deployed: {at}");
     }
-    println!("Deploys (newest first):");
+    if details.deploys_truncated {
+        println!(
+            "Deployment history is truncated to the newest 20 entries; use anywhere operations get ID for an older known operation."
+        );
+    }
+    println!("Deploys (source: control plane, newest first):");
     for deploy in details.deploys {
         println!(
             "  {}: {} ({}), started by {}",
@@ -418,6 +500,7 @@ fn status(app: &App) -> String {
         AppStatus::Restarting => "restarting",
         AppStatus::Crashed => "crashed",
         AppStatus::Stopped => "stopped",
+        AppStatus::Failed => "failed",
     };
     match app.restarts {
         0 => status.to_owned(),
@@ -431,9 +514,13 @@ fn address(url: Option<&str>) -> String {
     url.map_or_else(|| "runs in the background".to_owned(), plain)
 }
 
-/// What a deploy's progress says, as a line for a person or an AI agent.
-pub fn progress(progress: &Progress) -> &'static str {
+/// What a deploy's progress says, as a line for a person or an AI agent, for
+/// an image app's deploy if `image`.
+pub fn progress(progress: &Progress, image: bool) -> &'static str {
     match progress.step {
+        DeployStep::Uploading if image => {
+            "Pulling the image and writing its files onto the app's disk"
+        }
         DeployStep::Uploading => {
             "Uploading: sending the files, writing them into /app, and running the build step there"
         }
