@@ -6,7 +6,7 @@
 
 #![no_main]
 
-use appspec::{AppSpec, Processes};
+use appspec::{AppSpec, Processes, Sleep};
 use arbitrary::Arbitrary;
 use libfuzzer_sys::fuzz_target;
 
@@ -57,6 +57,8 @@ struct Spec {
     static_folder: Option<Folder>,
     image: Option<Image>,
     start_timeout: Option<u32>,
+    /// Some(true) sleeps, Some(false) never does.
+    sleep: Option<bool>,
 }
 
 /// Images an app may name, valid and not.
@@ -102,6 +104,9 @@ fuzz_target!(|spec: Spec| {
         static_folder: spec.static_folder.map(Folder::path),
         image: spec.image.map(Image::reference),
         start_timeout: spec.start_timeout,
+        sleep: spec
+            .sleep
+            .map(|auto| if auto { Sleep::Auto } else { Sleep::Never }),
     };
     let checked = spec.check();
     if let Err(error) = &checked {

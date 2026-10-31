@@ -422,6 +422,7 @@ fn status(u: &AppUsage) -> String {
         AppStatus::Crashed => "crashed",
         AppStatus::Stopped => "stopped",
         AppStatus::Failed => "failed",
+        AppStatus::Asleep => "asleep",
     };
     match u.restarts {
         0 => status.to_owned(),

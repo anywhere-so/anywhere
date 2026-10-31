@@ -518,6 +518,7 @@ fn status(app: &App) -> String {
         AppStatus::Crashed => "crashed",
         AppStatus::Stopped => "stopped",
         AppStatus::Failed => "failed",
+        AppStatus::Asleep => "asleep",
     };
     match app.restarts {
         0 => status.to_owned(),

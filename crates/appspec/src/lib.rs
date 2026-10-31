@@ -20,6 +20,10 @@
 //! place, with no build and no static site. With neither command it's a web
 //! app. A web app that takes long to start listening, such as one that builds
 //! itself when it first starts, can give `start_timeout`.
+//!
+//! `sleep` says whether an app sleeps when nobody uses it: `"auto"` or
+//! `"never"`. A background app has no address to wake it by, so it may not
+//! sleep.
 //! Expiry comes with M4, so until then `app.toml` refuses it as unknown.
 
 pub mod icon;
@@ -93,6 +97,23 @@ pub struct AppSpec {
     /// left out. Restarts after a crash wait for nothing.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub start_timeout: Option<u32>,
+    /// Whether the app sleeps when nobody uses it: `"auto"`, so it's saved to
+    /// disk once idle and woken by its next request or `anywhere exec`, or
+    /// `"never"`. Left out, the platform chooses by the kind of app: `"auto"`
+    /// for a web app or static site, `"never"` for a background app, which
+    /// may not sleep.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub sleep: Option<Sleep>,
+}
+
+/// Whether an app sleeps when nobody uses it.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "lowercase")]
+pub enum Sleep {
+    /// It sleeps once idle, and its next request or `anywhere exec` wakes it.
+    Auto,
+    /// It runs all the time.
+    Never,
 }
 
 /// The app's one command: `web` or `worker`, never both, or neither for a
@@ -255,6 +276,10 @@ pub enum SpecError {
         "start_timeout is set, but only a web app waits to start listening; remove start_timeout"
     )]
     StartTimeoutWithoutWeb,
+    #[error(
+        "A background app has no address, so nothing could wake it once it sleeps. It would stop running without an error. Use `sleep = \"never\"` (the default for background apps), or make it a web app if it only needs to run when asked. A scheduler that wakes apps on a timer is planned."
+    )]
+    SleepWithoutAddress,
 }
 
 impl SpecError {
@@ -291,6 +316,7 @@ impl SpecError {
             SpecError::BadStartTimeout { .. } | SpecError::StartTimeoutWithoutWeb => {
                 "app_start_timeout_invalid"
             }
+            SpecError::SleepWithoutAddress => "sleep_needs_an_address",
         }
     }
 }
@@ -426,6 +452,9 @@ impl AppSpec {
             if seconds == 0 || seconds > MAX_START_TIMEOUT {
                 return Err(SpecError::BadStartTimeout { seconds });
             }
+        }
+        if self.sleep == Some(Sleep::Auto) && self.kind()? == Kind::Worker {
+            return Err(SpecError::SleepWithoutAddress);
         }
         Ok(())
     }
@@ -588,6 +617,7 @@ worker = "node worker.js"
                 static_folder: None,
                 image: None,
                 start_timeout: None,
+                sleep: None,
             }
         );
         assert_eq!(
@@ -617,6 +647,7 @@ worker = "node worker.js"
                 static_folder: None,
                 image: None,
                 start_timeout: None,
+                sleep: None,
             }
         );
         assert_eq!(
@@ -735,6 +766,7 @@ worker = "node worker.js"
                 static_folder: None,
                 image: None,
                 start_timeout: None,
+                sleep: None,
             };
         let web = |title: &str, command: &str, port| spec(title, Some(command), None, port);
         let worker = |command: &str, port| spec("Hi", None, Some(command), port);
@@ -1018,5 +1050,69 @@ start_timeout = 900
         let error = with("run\0").unwrap_err();
         assert_eq!(error, SpecError::BuildHasNul);
         assert_eq!(error.code(), "app_build_invalid");
+    }
+
+    #[test]
+    fn reads_whether_an_app_sleeps() {
+        assert_eq!(parse(HELLO).unwrap().sleep, None, "left out");
+        let auto = parse(&format!("sleep = \"auto\"\n{HELLO}")).unwrap();
+        assert_eq!(auto.sleep, Some(Sleep::Auto));
+        let never = parse(&format!("sleep = \"never\"\n{HELLO}")).unwrap();
+        assert_eq!(never.sleep, Some(Sleep::Never));
+        let site = parse("title = \"Docs\"\nstatic = \"public\"\nsleep = \"auto\"\n").unwrap();
+        assert_eq!(site.sleep, Some(Sleep::Auto));
+        let worker = parse(&format!("sleep = \"never\"\n{TICKER}")).unwrap();
+        assert_eq!(worker.sleep, Some(Sleep::Never));
+        // It survives the trip to the control plane as JSON.
+        let json = serde_json::to_string(&auto).unwrap();
+        assert_eq!(
+            json,
+            r#"{"title":"Hello","processes":{"web":"python3 -m http.server $PORT"},"sleep":"auto"}"#
+        );
+        assert_eq!(serde_json::from_str::<AppSpec>(&json).unwrap(), auto);
+        assert!(
+            serde_json::to_string(&never)
+                .unwrap()
+                .ends_with(r#""sleep":"never"}"#)
+        );
+    }
+
+    #[test]
+    fn sleep_is_auto_or_never() {
+        for value in ["\"Auto\"", "\"always\"", "\"\"", "true", "30"] {
+            let error = parse(&format!("sleep = {value}\n{HELLO}")).unwrap_err();
+            assert_eq!(error.code(), "app_toml_invalid", "{value}: {error}");
+        }
+        assert!(
+            serde_json::from_str::<AppSpec>(
+                r#"{"title":"x","processes":{"web":"y"},"sleep":"idle"}"#
+            )
+            .is_err()
+        );
+    }
+
+    #[test]
+    fn a_background_app_may_not_sleep() {
+        let refused = |text: &str| {
+            let error = parse(text).unwrap_err();
+            (error.code(), error.to_string())
+        };
+        let message = "A background app has no address, so nothing could wake it once it sleeps. It would stop running without an error. Use `sleep = \"never\"` (the default for background apps), or make it a web app if it only needs to run when asked. A scheduler that wakes apps on a timer is planned.";
+        assert_eq!(
+            refused(&format!("sleep = \"auto\"\n{TICKER}")),
+            ("sleep_needs_an_address", message.to_owned())
+        );
+        assert_eq!(
+            refused("title = \"Box\"\nimage = \"alpine:3\"\nsleep = \"auto\"\n[processes]\nworker = \"sleep infinity\"\n").0,
+            "sleep_needs_an_address",
+            "an image app running a worker"
+        );
+        let mut spec = parse(TICKER).unwrap();
+        spec.sleep = Some(Sleep::Auto);
+        assert_eq!(
+            spec.check(),
+            Err(SpecError::SleepWithoutAddress),
+            "the control plane's check"
+        );
     }
 }

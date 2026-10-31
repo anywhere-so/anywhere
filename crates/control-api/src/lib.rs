@@ -259,6 +259,10 @@ pub enum AppStatus {
     /// again by itself; its next deploy or change to its secrets does, if what
     /// `error` says allows.
     Failed,
+    /// It's healthy, and asleep: it sleeps when nobody uses it (`sleep =
+    /// "auto"`), and nothing of it runs now. Its next request or
+    /// `anywhere exec` wakes it, which takes a moment.
+    Asleep,
 }
 
 /// The most deploys that one app's details list, as `app_view` says.
