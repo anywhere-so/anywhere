@@ -1522,6 +1522,13 @@
               "disk_full"
             ],
             "type": "string"
+          },
+          {
+            "description": "It went to sleep holding outgoing connections, which a sleep cuts.",
+            "enum": [
+              "slept_with_connections"
+            ],
+            "type": "string"
           }
         ]
       },
