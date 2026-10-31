@@ -33,7 +33,7 @@ fn main() -> Result<(), Box<dyn Error>> {
         "WorkspaceAppGrantUpdate",
         "AppCapabilities",
     ] {
-        settings.with_replacement(name, &format!("control_api::{name}"), std::iter::empty());
+        settings.with_replacement(name, format!("control_api::{name}"), std::iter::empty());
     }
 
     settings

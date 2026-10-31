@@ -40,6 +40,13 @@ pub struct WorkspaceList {
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize, JsonSchema)]
+pub struct WorkspaceInvitationPreview {
+    pub namespace: String,
+    pub title: String,
+    pub invited_by: String,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct WorkspaceCreate {
     pub namespace: String,
