@@ -75,7 +75,9 @@ pub async fn run(
         None
     } else {
         let header = |name| {
-            accepted.headers().get(name).and_then(|value| match value.to_str() { Ok(text) => Some(text), Err(_) => None }).ok_or_else(|| CliError::Internal { detail:format!("the accepted deploy omitted its {name} identity header; keep its operation ID and inspect it before deploying again") })
+            accepted.headers().get(name).ok_or_else(|| CliError::Internal {
+                detail:format!("the accepted deploy omitted its {name} identity header; keep its operation ID and inspect it before deploying again")
+            })?.to_str().map_err(|error| CliError::Internal { detail:format!("the accepted deploy has an invalid {name} identity header: {error}") })
         };
         let uuid = |name| {
             header(name)?

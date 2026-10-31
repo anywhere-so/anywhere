@@ -367,12 +367,11 @@ async fn resolve(
         .map_err(|source| CliError::QualifiedName { source })?;
     if let (Some(selected), Some(qualified)) =
         (&selected, original.as_ref().and_then(|a| a.owner.as_ref()))
+        && selected != qualified
     {
-        if selected != qualified {
-            return Err(argument(
-                "--workspace conflicts with the qualified app selector",
-            ));
-        }
+        return Err(argument(
+            "--workspace conflicts with the qualified app selector",
+        ));
     }
     if let Some(saved) = saved {
         if selected
