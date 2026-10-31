@@ -73,10 +73,11 @@ The platform runs a file server in the app's sandbox; logs and exec still work.
 
 For restricted access, Anywhere authenticates the owner and shared members/developers before requests reach the app. It supplies trusted headers on page loads, authenticated API calls and WebSockets:
 
-- `Anywhere-User`: stable Anywhere username; use it as the key for app accounts, creating an account on the first visit if needed.
-- `Anywhere-Role`: `owner`, `developer` or `member`. Restrict owner-only features appropriately. Finer permissions belong in the app's data, keyed by username.
+- `Anywhere-User-ID`: permanent Anywhere user ID; use it as the key for app accounts, creating an account on the first visit if needed.
+- `Anywhere-User`: editable username for display. A rename changes this label and app URLs, while IDs and permissions stay the same.
+- `Anywhere-Role`: `owner`, `developer` or `member`. Restrict owner-only features appropriately. Finer permissions belong in the app's data, keyed by user ID.
 
-The gateway strips client-supplied copies of these headers. Read `req.headers["anywhere-user"]` in Node, `req.get("Anywhere-User")` in Express, or `request.headers["Anywhere-User"]` in Flask. Local tests can supply them with `curl -H 'Anywhere-User: jo' -H 'Anywhere-Role: member' localhost:8080`; deployed apps must rely on the gateway.
+The gateway strips client-supplied copies of these headers. Read `req.headers["anywhere-user-id"]` in Node, `req.get("Anywhere-User-ID")` in Express, or `request.headers["Anywhere-User-ID"]` in Flask. Local tests can supply them with `curl -H 'Anywhere-User-ID: 0190a1b2-c3d4-7e5f-8a9b-0c1d2e3f4a5b' -H 'Anywhere-User: jo' -H 'Anywhere-Role: member' localhost:8080`; deployed apps must rely on the gateway.
 
 Existing software can retain its own login: users pass Anywhere sign-in first, then the app's login. The gateway passes app cookies and the app's own `Authorization` header through. An app's API key/password does not grant Anywhere access. Never put an Anywhere account token in an app, browser page or URL.
 

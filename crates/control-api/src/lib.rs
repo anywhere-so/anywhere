@@ -712,6 +712,8 @@ pub struct Warning {
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Deserialize, Serialize, JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum OperationKind {
+    /// Renames an account and releases its old username after gateway drain.
+    AccountRename,
     /// Changes anonymous access and waits for the gateways to apply and drain it.
     AppAccess,
     /// Revocation: the gateways and the control plane stop serving the
