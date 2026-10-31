@@ -5,8 +5,6 @@
 
 use std::path::PathBuf;
 
-use naming::AppName;
-
 use crate::app::App;
 use crate::app_ref::AppRef;
 use crate::check::Checked;
@@ -18,8 +16,31 @@ use crate::{control, deploy};
 const IDLE: &str = "sleep infinity";
 
 pub async fn new(name: &str, output: &mut Output) -> Result<ResultData, CliError> {
-    let name = AppName::parse(name).map_err(|source| CliError::NewName { source })?;
+    let selected = if name.contains('/') {
+        AppRef::parse(name)?
+    } else {
+        AppRef::own(naming::AppName::parse(name).map_err(|source| CliError::NewName { source })?)
+    };
+    let name = selected.name.clone();
     let (control, uploads) = control::connect()?;
+    if let Some(owner) = selected.owner() {
+        let workspaces = control
+            .client
+            .workspace_list()
+            .await
+            .map_err(|e| control.error(e))?
+            .into_inner();
+        if !workspaces
+            .workspaces
+            .iter()
+            .any(|workspace| workspace.namespace == owner && workspace.can_create)
+        {
+            return Err(CliError::NewWorkspace {
+                workspace: owner.to_owned(),
+            });
+        }
+    }
+
     // App names are lowercase letters, digits and hyphens, so they need no
     // quoting in TOML.
     let spec = appspec::parse(&format!(
@@ -39,18 +60,12 @@ pub async fn new(name: &str, output: &mut Output) -> Result<ResultData, CliError
         },
         true,
     )?;
-    let result = deploy::run(
-        &control,
-        &uploads,
-        AppRef::own(name.clone()),
-        &checked,
-        output,
-    )
-    .await?;
+    let target = selected.to_string();
+    let result = deploy::run(&control, &uploads, selected, &checked, output).await?;
     output.next(
-        &format!("anywhere exec {name} -- <command>"),
+        &format!("anywhere exec {target} -- <command>"),
         &format!(
-            "{name} has no web address; to serve one, deploy a folder whose app.toml gives web = \"...\" with `anywhere deploy DIR --app {name}`, and what you made in it stays"
+            "{name} has no web address; to serve one, deploy a folder whose app.toml gives web = \"...\" with `anywhere deploy DIR --app {target}`, and what you made in it stays"
         ),
     );
     Ok(result)

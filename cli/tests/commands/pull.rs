@@ -189,7 +189,7 @@ async fn pulls_an_app_you_edit_into_a_folder_named_for_it_and_says_how_to_deploy
     );
     assert!(
         stderr.ends_with(
-            "\nnext: anywhere deploy wiki --app alice/wiki\nnote: in wiki, give `anywhere logs` and `anywhere secrets` --app alice/wiki too; without it, they act on an app of your own named after the folder\n"
+            "\nnext: anywhere deploy wiki --app alice/wiki\nnote: in wiki, give `anywhere logs` and `anywhere secrets` --app alice/wiki too; this copy has no saved project binding until you deploy or explicitly bind it\n"
         ),
         "{stderr}"
     );
@@ -211,7 +211,7 @@ async fn pulls_an_app_you_edit_into_a_folder_named_for_it_and_says_how_to_deploy
     assert_eq!(
         last,
         json!({"event": "next", "command": "anywhere deploy copy --app alice/wiki",
-            "message": "anywhere deploy copy --app alice/wiki; in copy, give `anywhere logs` and `anywhere secrets` --app alice/wiki too; without it, they act on an app of your own named after the folder",
+            "message": "anywhere deploy copy --app alice/wiki; in copy, give `anywhere logs` and `anywhere secrets` --app alice/wiki too; this copy has no saved project binding until you deploy or explicitly bind it",
             "operation": null})
     );
 

@@ -346,6 +346,13 @@
             "type": "string"
           },
           {
+            "description": "A workspace membership, invitation or access change, with its drain barrier.",
+            "enum": [
+              "workspace_change"
+            ],
+            "type": "string"
+          },
+          {
             "description": "Renames an account and releases its old username after gateway drain.",
             "enum": [
               "account_rename"
@@ -766,6 +773,31 @@
             "type": "string"
           }
         },
+        "type": "object"
+      },
+      "AppIdentity": {
+        "properties": {
+          "app": {
+            "type": "string"
+          },
+          "app_id": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "workspace": {
+            "type": "string"
+          },
+          "workspace_id": {
+            "format": "uuid",
+            "type": "string"
+          }
+        },
+        "required": [
+          "app",
+          "app_id",
+          "workspace",
+          "workspace_id"
+        ],
         "type": "object"
       },
       "SecretList": {
@@ -1953,6 +1985,395 @@
         ],
         "type": "string"
       },
+      "WorkspaceInvitationAccept": {
+        "additionalProperties": false,
+        "properties": {
+          "secret": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "secret"
+        ],
+        "type": "object"
+      },
+      "WorkspaceList": {
+        "properties": {
+          "workspaces": {
+            "items": {
+              "$ref": "#/components/schemas/Workspace"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "workspaces"
+        ],
+        "type": "object"
+      },
+      "Workspace": {
+        "properties": {
+          "active": {
+            "type": "boolean"
+          },
+          "can_create": {
+            "type": "boolean"
+          },
+          "developer": {
+            "type": "boolean"
+          },
+          "id": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "kind": {
+            "$ref": "#/components/schemas/WorkspaceKind"
+          },
+          "namespace": {
+            "type": "string"
+          },
+          "paid_developers": {
+            "description": "Funded seat capacity is visible only to workspace owners.",
+            "format": "uint32",
+            "minimum": 0,
+            "nullable": true,
+            "type": "integer"
+          },
+          "role": {
+            "$ref": "#/components/schemas/WorkspaceRole"
+          },
+          "title": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "active",
+          "can_create",
+          "developer",
+          "id",
+          "kind",
+          "namespace",
+          "role",
+          "title"
+        ],
+        "type": "object"
+      },
+      "WorkspaceKind": {
+        "enum": [
+          "personal",
+          "team"
+        ],
+        "type": "string"
+      },
+      "WorkspaceRole": {
+        "enum": [
+          "owner",
+          "member"
+        ],
+        "type": "string"
+      },
+      "WorkspaceCreate": {
+        "additionalProperties": false,
+        "properties": {
+          "namespace": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "namespace",
+          "title"
+        ],
+        "type": "object"
+      },
+      "WorkspaceApps": {
+        "properties": {
+          "apps": {
+            "items": {
+              "$ref": "#/components/schemas/WorkspaceApp"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "apps"
+        ],
+        "type": "object"
+      },
+      "WorkspaceApp": {
+        "properties": {
+          "app": {
+            "$ref": "#/components/schemas/App"
+          },
+          "capabilities": {
+            "$ref": "#/components/schemas/AppCapabilities"
+          },
+          "id": {
+            "format": "uuid",
+            "type": "string"
+          }
+        },
+        "required": [
+          "app",
+          "capabilities",
+          "id"
+        ],
+        "type": "object"
+      },
+      "AppCapabilities": {
+        "properties": {
+          "develop": {
+            "type": "boolean"
+          },
+          "manage": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "develop",
+          "manage"
+        ],
+        "type": "object"
+      },
+      "WorkspaceAppGrantUpdate": {
+        "additionalProperties": false,
+        "properties": {
+          "role": {
+            "$ref": "#/components/schemas/ShareRole"
+          }
+        },
+        "required": [
+          "role"
+        ],
+        "type": "object"
+      },
+      "WorkspaceAppAccess": {
+        "properties": {
+          "everyone": {
+            "type": "boolean"
+          },
+          "people": {
+            "items": {
+              "$ref": "#/components/schemas/WorkspaceAppGrant"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "everyone",
+          "people"
+        ],
+        "type": "object"
+      },
+      "WorkspaceAppGrant": {
+        "properties": {
+          "developer": {
+            "type": "boolean"
+          },
+          "role": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/ShareRole"
+              }
+            ],
+            "nullable": true
+          },
+          "user": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "username": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "developer",
+          "user",
+          "username"
+        ],
+        "type": "object"
+      },
+      "WorkspaceAppSharing": {
+        "additionalProperties": false,
+        "properties": {
+          "everyone": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "everyone"
+        ],
+        "type": "object"
+      },
+      "WorkspaceInvite": {
+        "additionalProperties": false,
+        "properties": {
+          "email": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "email"
+        ],
+        "type": "object"
+      },
+      "WorkspaceInvitationCreated": {
+        "properties": {
+          "invitation": {
+            "$ref": "#/components/schemas/WorkspaceInvitation"
+          },
+          "operation": {
+            "$ref": "#/components/schemas/Operation"
+          },
+          "url": {
+            "description": "The fragment carries the invitation secret; never log this URL.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "invitation",
+          "operation",
+          "url"
+        ],
+        "type": "object"
+      },
+      "WorkspaceInvitation": {
+        "properties": {
+          "accepted": {
+            "type": "boolean"
+          },
+          "email": {
+            "type": "string"
+          },
+          "expires_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "revoked": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "accepted",
+          "email",
+          "expires_at",
+          "id",
+          "revoked"
+        ],
+        "type": "object"
+      },
+      "WorkspaceMembers": {
+        "properties": {
+          "activity": {
+            "items": {
+              "$ref": "#/components/schemas/WorkspaceActivity"
+            },
+            "type": "array"
+          },
+          "invitations": {
+            "items": {
+              "$ref": "#/components/schemas/WorkspaceInvitation"
+            },
+            "type": "array"
+          },
+          "members": {
+            "items": {
+              "$ref": "#/components/schemas/WorkspaceMember"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "activity",
+          "invitations",
+          "members"
+        ],
+        "type": "object"
+      },
+      "WorkspaceActivity": {
+        "properties": {
+          "action": {
+            "type": "string"
+          },
+          "actor": {
+            "type": "string"
+          },
+          "at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "details": {
+            "description": "IDs and permission or spending changes only; no invitation secret or app content."
+          },
+          "id": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "target": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "action",
+          "actor",
+          "at",
+          "details",
+          "id",
+          "target"
+        ],
+        "type": "object"
+      },
+      "WorkspaceMember": {
+        "properties": {
+          "developer": {
+            "type": "boolean"
+          },
+          "joined_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "role": {
+            "$ref": "#/components/schemas/WorkspaceRole"
+          },
+          "user": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "username": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "developer",
+          "joined_at",
+          "role",
+          "user",
+          "username"
+        ],
+        "type": "object"
+      },
+      "WorkspaceMemberUpdate": {
+        "additionalProperties": false,
+        "properties": {
+          "developer": {
+            "type": "boolean"
+          },
+          "role": {
+            "$ref": "#/components/schemas/WorkspaceRole"
+          }
+        },
+        "required": [
+          "developer",
+          "role"
+        ],
+        "type": "object"
+      },
       "CliLoginRequest": {
         "additionalProperties": false,
         "description": "What `anywhere login` sends to start: the machine it runs on.",
@@ -2055,7 +2476,7 @@
     }
   },
   "info": {
-    "description": "Contract 6. The `anywhere` CLI says so in every request's User-Agent, `anywhere/<version> (contract 6)`, and the gateway refuses a CLI built for another contract, or one from before them (`anywhere/<version>` alone), with 400 `cli_outdated` before the request reaches this API, whatever its route or body. Its message says how to install the CLI this platform serves. Other clients are told nothing.",
+    "description": "Contract 7. The `anywhere` CLI says so in every request's User-Agent, `anywhere/<version> (contract 7)`, and the gateway refuses a CLI built for another contract, or one from before them (`anywhere/<version>` alone), with 400 `cli_outdated` before the request reaches this API, whatever its route or body. Its message says how to install the CLI this platform serves. Other clients are told nothing.",
     "title": "Control API",
     "version": "0.1.0"
   },
@@ -2295,7 +2716,32 @@
                 }
               }
             },
-            "description": "successfully enqueued operation"
+            "description": "successfully enqueued operation",
+            "headers": {
+              "app-id": {
+                "required": true,
+                "schema": {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                "style": "simple"
+              },
+              "workspace-id": {
+                "required": true,
+                "schema": {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                "style": "simple"
+              },
+              "workspace-namespace": {
+                "required": true,
+                "schema": {
+                  "type": "string"
+                },
+                "style": "simple"
+              }
+            }
           },
           "4XX": {
             "$ref": "#/components/responses/Error"
@@ -2305,6 +2751,50 @@
           }
         },
         "summary": "Starts deploying an app."
+      }
+    },
+    "/v1/apps/{app}/identity": {
+      "get": {
+        "operationId": "app_identity",
+        "parameters": [
+          {
+            "description": "The app's name, which is its folder's name.",
+            "in": "path",
+            "name": "app",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "The username of the app's owner, for an app whose owner made you a developer. Without it, the app is yours.",
+            "in": "query",
+            "name": "owner",
+            "schema": {
+              "nullable": true,
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppIdentity"
+                }
+              }
+            },
+            "description": "successful operation"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "summary": "Stable IDs for binding a developer's project, including a personal app shared with them."
       }
     },
     "/v1/apps/{app}/logs": {
@@ -2971,6 +3461,606 @@
           }
         },
         "summary": "This signed-in account\u2019s usage and dollars for the UTC calendar month."
+      }
+    },
+    "/v1/workspace-invitations/accept": {
+      "post": {
+        "operationId": "workspace_invitation_accept",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/WorkspaceInvitationAccept"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Operation"
+                }
+              }
+            },
+            "description": "successfully enqueued operation"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "summary": "The secret is in the body, never a path or query parameter."
+      }
+    },
+    "/v1/workspaces": {
+      "get": {
+        "operationId": "workspace_list",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkspaceList"
+                }
+              }
+            },
+            "description": "successful operation"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "summary": "Personal and team workspaces this person belongs to."
+      },
+      "post": {
+        "operationId": "workspace_create",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/WorkspaceCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Operation"
+                }
+              }
+            },
+            "description": "successfully enqueued operation"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "summary": "Create a team. It cannot run apps until its owner funds developer seats."
+      }
+    },
+    "/v1/workspaces/{workspace}": {
+      "get": {
+        "operationId": "workspace_view",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "workspace",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Workspace"
+                }
+              }
+            },
+            "description": "successful operation"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "summary": "A workspace's identity and this caller's capabilities."
+      }
+    },
+    "/v1/workspaces/{workspace}/apps": {
+      "get": {
+        "operationId": "workspace_apps",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "workspace",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkspaceApps"
+                }
+              }
+            },
+            "description": "successful operation"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/v1/workspaces/{workspace}/apps/{app}/people/{user}": {
+      "delete": {
+        "operationId": "workspace_app_ungrant",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "app",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "user",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "workspace",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Operation"
+                }
+              }
+            },
+            "description": "successfully enqueued operation"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      },
+      "put": {
+        "operationId": "workspace_app_grant",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "app",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "user",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "workspace",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/WorkspaceAppGrantUpdate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Operation"
+                }
+              }
+            },
+            "description": "successfully enqueued operation"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/v1/workspaces/{workspace}/apps/{app}/sharing": {
+      "get": {
+        "operationId": "workspace_app_sharing",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "app",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "workspace",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkspaceAppAccess"
+                }
+              }
+            },
+            "description": "successful operation"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      },
+      "put": {
+        "operationId": "workspace_app_sharing_set",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "app",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "workspace",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/WorkspaceAppSharing"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Operation"
+                }
+              }
+            },
+            "description": "successfully enqueued operation"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/v1/workspaces/{workspace}/invitations": {
+      "post": {
+        "operationId": "workspace_invite",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "workspace",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/WorkspaceInvite"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkspaceInvitationCreated"
+                }
+              }
+            },
+            "description": "successfully enqueued operation"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "summary": "Invite a verified email. Returns its secret link only in this response."
+      }
+    },
+    "/v1/workspaces/{workspace}/invitations/{invitation}": {
+      "delete": {
+        "operationId": "workspace_invitation_revoke",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "invitation",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "workspace",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Operation"
+                }
+              }
+            },
+            "description": "successfully enqueued operation"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/v1/workspaces/{workspace}/members": {
+      "get": {
+        "operationId": "workspace_members",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "workspace",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkspaceMembers"
+                }
+              }
+            },
+            "description": "successful operation"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "summary": "Owner-only member and invitation administration."
+      }
+    },
+    "/v1/workspaces/{workspace}/members/{user}": {
+      "delete": {
+        "operationId": "workspace_member_remove",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "user",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "workspace",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Operation"
+                }
+              }
+            },
+            "description": "successfully enqueued operation"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      },
+      "patch": {
+        "operationId": "workspace_member_update",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "user",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "workspace",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/WorkspaceMemberUpdate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Operation"
+                }
+              }
+            },
+            "description": "successfully enqueued operation"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/v1/workspaces/{workspace}/usage": {
+      "get": {
+        "operationId": "workspace_usage",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "workspace",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AccountUsage"
+                }
+              }
+            },
+            "description": "successful operation"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
       }
     },
     "/v2/cli-logins": {

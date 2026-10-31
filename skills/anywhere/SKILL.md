@@ -12,6 +12,7 @@ Anywhere runs each app in its own persistent Linux sandbox: root access, `apt`, 
 
 Read only the references relevant to the request:
 
+- **Choose a team or project destination, invite people or manage team access:** [workspaces](references/workspaces.md). Use an explicit workspace before creating software; honor the project binding and never fall back to personal.
 - **Install, sign in or resolve credentials:** [setup](references/setup.md). Find the CLI with `command -v anywhere || ls ~/.local/bin/anywhere`; use the full path if needed. `anywhere apps list` checks sign-in. If missing, install with `curl -fsSL https://anywhere.so/install.sh | sh`.
 - **Build an app or change its architecture:** [building apps](references/building-apps.md): configuration, runtime, persistence, static routing, identity headers and browser/network constraints.
 - **Deploy, update or debug:** [deployment and debugging](references/deploying-and-debugging.md): upload rules, resources, operations, logs, exec and pull.

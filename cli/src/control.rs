@@ -24,6 +24,30 @@ pub struct Control {
     pub api: String,
 }
 
+pub fn connect_at(
+    dir: &std::path::Path,
+) -> Result<(Control, crate::settings::UploadClient), CliError> {
+    let settings = Settings::from_env()?;
+    let clients = settings.clients_at(dir)?;
+    Ok((
+        Control {
+            client: api::Client::new_with_client(&settings.api, clients.api),
+            api: settings.api,
+        },
+        clients.uploads,
+    ))
+}
+
+/// Explicit binding is the one operation that may select a replacement identity.
+pub fn connect_unbound() -> Result<Control, CliError> {
+    let settings = Settings::from_env()?;
+    let clients = settings.clients_unbound()?;
+    Ok(Control {
+        client: api::Client::new_with_client(&settings.api, clients.api),
+        api: settings.api,
+    })
+}
+
 pub fn connect() -> Result<(Control, crate::settings::UploadClient), CliError> {
     with(Settings::from_env()?)
 }
@@ -61,6 +85,15 @@ pub fn connect_streams() -> Result<Control, CliError> {
 }
 
 impl Control {
+    pub async fn workspaces(
+        &self,
+        deadline: Instant,
+        output: Output,
+    ) -> Result<control_api::WorkspaceList, CliError> {
+        self.read(deadline, output, || self.client.workspace_list())
+            .await
+    }
+
     pub async fn view(
         &self,
         id: Uuid,

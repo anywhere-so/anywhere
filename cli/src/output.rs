@@ -25,6 +25,7 @@ pub struct Output {
 #[derive(Serialize)]
 #[serde(untagged)]
 pub enum ResultData {
+    Workspace(serde_json::Value),
     Licenses {
         text: String,
     },
@@ -121,6 +122,21 @@ impl Output {
             show(result);
         }
         Ok(())
+    }
+
+    pub fn deploy_destination(self, app: &str, workspace: Option<&str>) {
+        let payer = workspace.unwrap_or("your personal workspace");
+        let message = format!("Deploying {app}; runtime usage is billed to {payer}");
+        if self.json {
+            eprintln!(
+                "{}",
+                json!({"event":"destination", "app":app,
+                "workspace":workspace, "personal":workspace.is_none(),
+                "billing_workspace":payer,"message":message,"operation":self.operation})
+            );
+        } else {
+            eprintln!("progress: {}", plain(&message));
+        }
     }
 
     pub fn progress(self, message: &str) {
@@ -280,6 +296,7 @@ impl Output {
 
 fn show(result: ResultData) {
     match result {
+        ResultData::Workspace(value) => println!("{}", plain(&value.to_string())),
         ResultData::Licenses { text } => println!("{text}"),
         ResultData::Deploy { app, url, .. } => match url {
             Some(url) => println!("{}", plain(&url)),

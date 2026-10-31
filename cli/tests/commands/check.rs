@@ -145,14 +145,14 @@ async fn signed_in_checks_live_ceilings_and_deployed_app_counts() {
         "month_cost_microusd":0, "deployed_at":null, "error":null
     }]}))]).await;
     success(&server.run(&["--json", "check", &app]).await);
-    let server = Server::start(vec![]).await;
+    let server = Server::start(vec![reply(me("free"))]).await;
     let result = success(
         &server
             .run(&["--json", "check", &app, "--app", "alice/seo"])
             .await,
     );
     assert_eq!(result["plan_checked"], false);
-    assert!(server.paths().is_empty());
+    assert_eq!(server.paths(), ["GET /v1/me HTTP/1.1"]);
 }
 
 /// One of the dev user's apps, `name`, at Free's ceilings.

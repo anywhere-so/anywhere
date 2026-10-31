@@ -289,7 +289,10 @@ fn walker(root: &Path, gitignore: bool, hidden: bool) -> WalkBuilder {
 /// hold secrets.
 fn left_out(entry: &DirEntry) -> bool {
     let name = entry.file_name();
-    name == ".git" || name == ".env" || name.as_encoded_bytes().starts_with(b".env.")
+    name == ".anywhere"
+        || name == ".git"
+        || name == ".env"
+        || name.as_encoded_bytes().starts_with(b".env.")
 }
 
 /// A file's path inside the app's folder, with `/` between folders.

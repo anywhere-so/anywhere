@@ -21,6 +21,10 @@ pub enum CliError {
     #[error("{detail}")]
     Arguments { detail: String },
     #[error(
+        "{detail}; inspect the project destination with `anywhere workspaces list` and bind it explicitly; nothing falls back to personal"
+    )]
+    Binding { detail: String },
+    #[error(
         "the control API didn't answer before the read's deadline; check the network and try this read again"
     )]
     ReadTimedOut,
@@ -48,6 +52,10 @@ pub enum CliError {
     LookupName { source: NameError },
     #[error("{source}")]
     NewName { source: NameError },
+    #[error(
+        "cannot create an app in {workspace}; choose your personal namespace or a team where you have an assigned paid developer seat"
+    )]
+    NewWorkspace { workspace: String },
     #[error(
         "in OWNER/NAME, {source}; name an app as `anywhere apps list` shows it: NAME for one of yours, OWNER/NAME for one whose owner made you a developer"
     )]
@@ -324,6 +332,7 @@ impl CliError {
     /// errors keep the code the platform gave.
     pub fn code(&self) -> &str {
         match self {
+            CliError::Binding { .. } => "workspace_binding_invalid",
             CliError::Arguments { .. } => "argument_invalid",
             CliError::ReadTimedOut => "api_timed_out",
             CliError::OperationTimedOut { .. } => "operation_timed_out",
@@ -335,6 +344,7 @@ impl CliError {
             | CliError::LookupName { source }
             | CliError::NewName { source }
             | CliError::QualifiedName { source } => source.code(),
+            CliError::NewWorkspace { .. } => "invalid_app_name",
             CliError::AppRefSlashes { .. } => "invalid_app_name",
             CliError::OwnerOnly => "owner_only",
             CliError::AppTomlMissing { .. } => "app_toml_missing",

@@ -13,6 +13,29 @@ fn main() -> Result<(), Box<dyn Error>> {
     let spec: openapiv3::OpenAPI = serde_json::from_slice(&std::fs::read(&spec_path)?)?;
 
     let mut settings = progenitor::GenerationSettings::default();
+    for name in [
+        "AppIdentity",
+        "Workspace",
+        "WorkspaceKind",
+        "WorkspaceRole",
+        "WorkspaceList",
+        "WorkspaceCreate",
+        "WorkspaceMembers",
+        "WorkspaceMember",
+        "WorkspaceMemberUpdate",
+        "WorkspaceInvite",
+        "WorkspaceInvitationCreated",
+        "WorkspaceInvitationAccept",
+        "WorkspaceApps",
+        "WorkspaceApp",
+        "WorkspaceAppAccess",
+        "WorkspaceAppSharing",
+        "WorkspaceAppGrantUpdate",
+        "AppCapabilities",
+    ] {
+        settings.with_replacement(name, format!("control_api::{name}"), std::iter::empty());
+    }
+
     settings
         .with_interface(progenitor::InterfaceStyle::Positional)
         // The spec's own types for these come from the crates the CLI checks

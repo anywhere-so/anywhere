@@ -44,7 +44,7 @@ pub async fn deploy(
     output: &mut Output,
 ) -> Result<ResultData, CliError> {
     let named = app.map(AppRef::parse).transpose()?;
-    let (control, uploads) = control::connect()?;
+    let (control, uploads) = control::connect_at(dir)?;
     let checked = check::read(dir, named.as_ref().map(|app| app.name.clone()))?;
     let app = named.unwrap_or_else(|| AppRef::own(checked.app.name.clone()));
     run(&control, &uploads, app, &checked, output).await
@@ -58,19 +58,47 @@ pub async fn run(
     checked: &Checked,
     output: &mut Output,
 ) -> Result<ResultData, CliError> {
+    output.deploy_destination(&app.to_string(), app.owner());
     let image = checked.app.spec.image.as_deref();
     // Capture before POST: the host may write the deploy's first line before
     // the accepted operation reaches us. A failed read warns after acceptance.
     let log_start = logs::start(&app, *output).await;
     let deadline = Instant::now() + deploy_deadline(&checked.app.spec);
     // Never retried: another POST would create another deploy.
-    let operation = control
+    let accepted = control
         .client
         .deploy_create(app.name.as_str(), app.owner(), &checked.request)
         .await
-        .map_err(|error| control.error(error))?
-        .into_inner();
-    output.operation = Some(operation.id);
+        .map_err(|error| control.error(error))?;
+    output.operation = Some(accepted.id);
+    let binding = if checked.app.dir.as_os_str().is_empty() {
+        None
+    } else {
+        let header = |name| {
+            accepted.headers().get(name).ok_or_else(|| CliError::Internal {
+                detail:format!("the accepted deploy omitted its {name} identity header; keep its operation ID and inspect it before deploying again")
+            })?.to_str().map_err(|error| CliError::Internal { detail:format!("the accepted deploy has an invalid {name} identity header: {error}") })
+        };
+        let uuid = |name| {
+            header(name)?
+                .parse::<uuid::Uuid>()
+                .map_err(|_| CliError::Internal {
+                    detail: format!(
+                        "the accepted deploy returned an invalid {name} identity header"
+                    ),
+                })
+        };
+        let namespace = header("workspace-namespace")?;
+        naming::Username::parse(namespace).map_err(|source| CliError::QualifiedName { source })?;
+        Some(crate::binding::Binding {
+            api: control.api.clone(),
+            workspace_id: uuid("workspace-id")?,
+            workspace: namespace.to_owned(),
+            app_id: uuid("app-id")?,
+            app: app.name.to_string(),
+        })
+    };
+    let operation = accepted.into_inner();
     output.progress(&format!(
         "Deploy started: {}; check with anywhere operations get {}",
         operation.id, operation.id
@@ -128,6 +156,9 @@ pub async fn run(
         None => following.await,
     };
     if result.is_ok() {
+        if let Some(binding) = binding {
+            crate::binding::write(&checked.app.dir, &binding, false)?;
+        }
         output.progress("Deploy succeeded");
     }
     result

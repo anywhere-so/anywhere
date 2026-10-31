@@ -42,7 +42,12 @@ const QUIET_FOR: Duration = Duration::from_secs(60);
 const EMPTY_FOLLOWS: u32 = 5;
 
 pub async fn show(app: Option<&str>, follow: bool, output: Output) -> Result<ResultData, CliError> {
-    let app = secrets::target(app)?.app;
+    let target = secrets::target(app)?.app;
+    if app.is_none() {
+        let (control, _) = control::connect()?;
+        crate::workspaces::require_destination(app, &control, output).await?;
+    }
+    let app = target;
     let control = control::connect_streams()?;
     if follow {
         return follow_on(&control, &app, output).await;
