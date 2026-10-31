@@ -10,6 +10,21 @@ import sys
 
 OPERATIONS = {
     'account_usage',
+    'workspace_list',
+    'workspace_create',
+    'workspace_view',
+    'workspace_members',
+    'workspace_invite',
+    'workspace_invitation_revoke',
+    'workspace_invitation_accept',
+    'workspace_member_update',
+    'workspace_member_remove',
+    'workspace_apps',
+    'workspace_app_sharing',
+    'workspace_app_sharing_set',
+    'workspace_app_grant',
+    'workspace_app_ungrant',
+
     'app_access_get',
     'app_access_set',
     'app_delete',

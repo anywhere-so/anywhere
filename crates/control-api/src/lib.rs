@@ -10,11 +10,13 @@ use serde::{Deserialize, Serialize};
 use std::{fmt, time::Duration};
 pub use usage::*;
 use uuid::Uuid;
+pub use workspaces::*;
 mod cli_contract;
 mod cli_login;
 mod follow;
 pub mod plans;
 mod usage;
+mod workspaces;
 /// The most a deploy's request may be, as JSON: room for any app's list of
 /// files, while bounding what one deploy makes the control plane read before it
 /// checks the list. The CLI checks its request against it before sending, and
@@ -712,6 +714,8 @@ pub struct Warning {
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Deserialize, Serialize, JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum OperationKind {
+    /// A workspace membership, invitation or access change, with its drain barrier.
+    WorkspaceChange,
     /// Changes anonymous access and waits for the gateways to apply and drain it.
     AppAccess,
     /// Revocation: the gateways and the control plane stop serving the
