@@ -32,6 +32,7 @@ mod settings;
 mod shares;
 mod skill;
 mod untar;
+mod update;
 mod upload;
 mod usage;
 mod workspaces;
@@ -97,8 +98,16 @@ enum Command {
         #[arg(long)]
         header_json: bool,
     },
+    /// Install the CLI the platform you're signed in to serves, in place of
+    /// this one, with its install script, which installs its anywhere skill
+    /// too, unless this CLI is it already. A CLI that's a release checks for
+    /// another at most once a day, and says to run this when there is
+    /// (ANYWHERE_NO_UPDATE_CHECK=1 turns that off).
+    Update,
     /// Install the anywhere skill, which tells AI agents how to use this CLI,
-    /// for Claude Code and Codex.
+    /// for Claude Code and Codex. Every other command of a release's CLI
+    /// writes it again wherever it's installed but isn't this CLI's, as after
+    /// an update.
     Skill {
         #[command(subcommand)]
         command: Skill,
@@ -405,15 +414,78 @@ fn main() -> ExitCode {
         starts_deploy: matches!(&cli.command, Command::Deploy { .. }),
         ..Output::default()
     };
+    // Neither the skill's own command nor those whose output another program
+    // reads keep the skill or check for another CLI. `update` keeps it, so
+    // one that finds nothing to install still leaves the skill the CLI's, but
+    // asks for itself.
+    let keeps = !matches!(
+        cli.command,
+        Command::Skill { .. } | Command::Token { .. } | Command::Licenses
+    );
+    let mut notes = Vec::new();
+    if keeps && update::released() {
+        match skill::sync() {
+            Ok(written) => {
+                for copy in written {
+                    notes.push(update::Note {
+                        code: "skill_updated",
+                        message: format!(
+                            "wrote the anywhere skill for {} at {} again, since it wasn't this CLI's ({}); read it again before going on",
+                            copy.name,
+                            copy.path,
+                            update::VERSION
+                        ),
+                    });
+                }
+            }
+            Err(error) => notes.push(update::Note {
+                code: "skill_update_failed",
+                message: format!(
+                    "the anywhere skill isn't this CLI's ({}) and couldn't be written again: {error}",
+                    update::VERSION
+                ),
+            }),
+        }
+    }
     let result = match tokio::runtime::Builder::new_current_thread()
         .enable_all()
         .build()
     {
-        Ok(runtime) => runtime.block_on(run(cli.command, cli.workspace, &mut output)),
+        Ok(runtime) => runtime.block_on(async {
+            let check = (keeps && !matches!(cli.command, Command::Login { .. } | Command::Update))
+                .then(|| tokio::spawn(update::check()));
+            let result = run(cli.command, cli.workspace, &mut output).await;
+            if let Some(mut check) = check {
+                // The check runs beside the command, and holds it a moment
+                // at most once it's done; one that didn't finish asks again
+                // next time.
+                match tokio::time::timeout(CHECK_GRACE, &mut check).await {
+                    Ok(Ok(note)) => notes.extend(note),
+                    Ok(Err(error)) => notes.push(update::Note {
+                        code: "update_check_failed",
+                        message: format!("the check for another CLI stopped ({error})"),
+                    }),
+                    Err(_) => check.abort(),
+                }
+            }
+            result
+        }),
         Err(error) => Err(CliError::Internal {
             detail: format!("couldn't start the async runtime: {error}"),
         }),
     };
+    // Before the result, so an error is still the last line.
+    for note in notes {
+        output.note(note.code, &note.message);
+    }
+    finish(result, &mut output)
+}
+
+/// How long the check for another CLI may hold a command that's done.
+const CHECK_GRACE: Duration = Duration::from_secs(1);
+
+/// Writes the command's result, and gives its exit code.
+fn finish(result: Result<Outcome, CliError>, output: &mut Output) -> ExitCode {
     match result {
         Ok(Outcome::Data(result)) => match output.success(result) {
             Ok(()) => ExitCode::SUCCESS,
@@ -506,6 +578,7 @@ async fn run(
         Command::Skill {
             command: Skill::Install,
         } => skill::install().map(Outcome::Data),
+        Command::Update => update::update(*output).await.map(Outcome::Data),
         Command::Check { dir, app } => Ok(Outcome::Data(ResultData::Check(
             check::check(&dir, app.as_deref(), *output).await?,
         ))),

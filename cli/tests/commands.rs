@@ -38,6 +38,8 @@ mod shares;
 mod skill;
 #[path = "commands/token.rs"]
 mod token;
+#[path = "commands/update.rs"]
+mod update;
 #[path = "commands/usage.rs"]
 mod usage;
 
@@ -278,7 +280,12 @@ impl Drop for Server {
 /// The CLI with none of its settings, and no credentials file, so it never
 /// reads the machine's own.
 fn command() -> tokio::process::Command {
-    let mut command = tokio::process::Command::new(env!("CARGO_BIN_EXE_anywhere"));
+    command_at(Path::new(env!("CARGO_BIN_EXE_anywhere")))
+}
+
+/// [`command`], for the CLI at `cli`.
+fn command_at(cli: &Path) -> tokio::process::Command {
+    let mut command = tokio::process::Command::new(cli);
     command
         .env_remove("ANYWHERE_API")
         .env_remove("ANYWHERE_TOKEN")
@@ -286,6 +293,12 @@ fn command() -> tokio::process::Command {
         .env_remove("ANYWHERE_PORTAL")
         // `anywhere skill install` writes Claude Code's copy there.
         .env_remove("CLAUDE_CONFIG_DIR")
+        .env_remove("ANYWHERE_NO_UPDATE_CHECK")
+        // Every command keeps the skill there, never the machine's own.
+        .env(
+            "HOME",
+            concat!(env!("CARGO_TARGET_TMPDIR"), "/no-such-home"),
+        )
         .env(
             "XDG_CONFIG_HOME",
             concat!(env!("CARGO_TARGET_TMPDIR"), "/no-such-config"),

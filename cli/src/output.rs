@@ -75,9 +75,19 @@ pub enum ResultData {
         api: String,
         credentials: String,
     },
-    /// Each copy of the skill `anywhere skill install` wrote.
+    /// Each copy of the skill `anywhere skill install` wrote, and the
+    /// version of the CLI it's for, which its SKILL.md names.
     Skill {
         installed: Vec<crate::skill::Installed>,
+        version: &'static str,
+    },
+    /// What `anywhere update` did: whether it installed the platform's CLI,
+    /// the version before and now, and where.
+    Update {
+        updated: bool,
+        previous: &'static str,
+        version: String,
+        path: String,
     },
     /// An app’s full usage answer over a range.
     Usage(Box<crate::usage::Usage>),
@@ -212,6 +222,20 @@ impl Output {
             );
         } else {
             show_warning(warning);
+        }
+    }
+
+    /// Something to know that isn't about the command itself, such as a
+    /// newer CLI to update to: as text, a `note:` line, and with `--json`, a
+    /// `note` event with its code.
+    pub fn note(self, code: &str, message: &str) {
+        if self.json {
+            eprintln!(
+                "{}",
+                json!({"event":"note", "code":code, "message":message, "operation":self.operation})
+            );
+        } else {
+            eprintln!("note: {}: {}", plain(code), plain(message));
         }
     }
 
@@ -422,7 +446,28 @@ fn show(result: ResultData) {
             plain(&api),
             plain(&credentials)
         ),
-        ResultData::Skill { installed } => {
+        ResultData::Update {
+            updated,
+            previous,
+            version,
+            path,
+        } => {
+            if updated {
+                println!(
+                    "Updated {} from {} to {}, and the anywhere skill with it",
+                    plain(&path),
+                    plain(previous),
+                    plain(&version)
+                );
+            } else {
+                println!(
+                    "{} ({}) is already the CLI the platform serves",
+                    plain(&path),
+                    plain(&version)
+                );
+            }
+        }
+        ResultData::Skill { installed, .. } => {
             for installed in installed {
                 println!(
                     "Installed the anywhere skill for {} in {}",

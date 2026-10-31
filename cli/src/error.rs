@@ -323,6 +323,19 @@ pub enum CliError {
         installed: String,
     },
 
+    #[error(
+        "this CLI is {path}, and `anywhere update` replaces only a CLI installed as a file named `anywhere`, as the install script installs it; run `curl -fsSL {platform}/install.sh | sh` to install the platform's CLI as ~/.local/bin/anywhere"
+    )]
+    UpdateNotInstalled { path: String, platform: String },
+    #[error(
+        "couldn't update the CLI: {detail}; running `anywhere update` again is safe, and so is installing with `curl -fsSL {platform}/install.sh | sh`"
+    )]
+    UpdateFailed { platform: String, detail: String },
+    #[error(
+        "couldn't read this CLI's own executable to compare it with the platform's ({detail}); check that {path} is readable"
+    )]
+    SelfUnreadable { path: String, detail: String },
+
     #[error("something went wrong inside the CLI ({detail}); this is a bug, so report it")]
     Internal { detail: String },
 }
@@ -414,6 +427,9 @@ impl CliError {
             CliError::SkillLinked { .. } => "skill_path_linked",
             CliError::SkillUnwritable { .. } => "skill_write_failed",
             CliError::SkillPartlyInstalled { error, .. } => error.code(),
+            CliError::UpdateNotInstalled { .. } => "update_not_installed",
+            CliError::UpdateFailed { .. } => "update_failed",
+            CliError::SelfUnreadable { .. } => "cli_unreadable",
             CliError::Internal { .. } => "internal",
         }
     }

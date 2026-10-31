@@ -10,6 +10,18 @@ curl -fsSL https://anywhere.so/install.sh | sh
 
 The installer installs the CLI and its matching skill bundle for Claude Code and Codex. `anywhere skill install` reinstalls that bundle; it refuses symlinks within the installed skill rather than overwriting a linked checkout. A `skill_path_linked` error names the link; do not remove it without the user's direction.
 
+## Staying current
+
+The skill's frontmatter `metadata.version` is the CLI version it belongs to; `anywhere --version` prints the CLI's. A released CLI's every command rewrites an installed skill that doesn't match it, and once a day it asks the platform whether it serves another CLI. Both report on stderr, before the result, as `note: <code>: …`, or with `--json` as `{"event":"note","code":…}`:
+
+| Note | Action |
+|---|---|
+| `cli_update_available` | Run `anywhere update`, which installs the platform's CLI in place of this one and its skill with it, then reread this skill and carry on. The command that printed the note already ran. |
+| `skill_updated` | The skill on disk was just rewritten for this CLI; reread it before relying on it. |
+| `skill_update_failed`, `update_check_failed` | Not a failure of the command. Tell the user if it persists. `ANYWHERE_NO_UPDATE_CHECK=1` turns off the daily check. |
+
+`anywhere update` says whether it changed anything. On `update_not_installed` or `update_failed`, follow the message, which gives the `curl … install.sh | sh` command.
+
 ## Login
 
 `anywhere apps list` checks credentials. A successful list, including an empty list, means signed in.
@@ -31,7 +43,7 @@ Credentials are saved in `$XDG_CONFIG_HOME/anywhere/credentials.json`, defaultin
 | `credentials_invalid` | Follow the permission/configuration error. If exposed, revoke the credential and log in again. |
 | `cli_login_expired` | Start login again and give the user the new URL/code. |
 | `api_unreachable` | Check the network and configured API; do not treat this as missing credentials. |
-| `cli_outdated` | Reinstall, reread the updated skill, then repeat the refused command. The platform rejected it before making a change. |
+| `cli_outdated` | Run `anywhere update` (or the `curl` command in the message, for a CLI without `update`), reread the updated skill, then repeat the refused command. The platform rejected it before making a change. |
 
 ## Token helpers
 

@@ -21,6 +21,15 @@ To install the bundled skill again, run `anywhere skill install`. Existing skill
 symlinks are refused rather than overwritten. Read
 [the skill](skills/anywhere/SKILL.md) for deployment and management instructions.
 
+## Update
+
+`anywhere update` installs the CLI the platform you're signed in to serves, and its
+skill with it. A released CLI checks for another at most once a day and prints a
+`cli_update_available` note when there is one; `ANYWHERE_NO_UPDATE_CHECK=1` turns
+that off. Every command of a released CLI also rewrites an installed skill that doesn't
+match it, so the skill an agent reads is always the one for its CLI. Builds from
+source do neither.
+
 ## Build and test
 
 Install [mise](https://mise.jdx.dev), then run:
