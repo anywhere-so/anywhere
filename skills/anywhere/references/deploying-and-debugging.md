@@ -96,8 +96,8 @@ Verify the user's feature through the returned app URL with Anywhere authenticat
 
 ## Usage, performance and paused apps
 
-`anywhere usage` reports the account's UTC month: usage, available balance, percentage, forecast and rates. `anywhere usage NAME` reports the app's CPU/memory/disk/network, limits and problems. Ranges are `1h`, default `24h`, `7d`, `30d`; `--range` requires an app. Add `--detail --json` for points and per-point costs; app JSON otherwise omits points. Developers see resource diagnostics but no owner's dollar amounts.
+`anywhere usage` reports the account's current usage period, a calendar month in UTC on Free and from the subscription's billing date on Pro: usage, available balance, percentage, forecast and rates. `anywhere usage NAME` reports the app's CPU/memory/disk/network, limits and problems. Ranges are `1h`, default `24h`, `7d`, `30d`; `--range` requires an app. Add `--detail --json` for points and per-point costs; app JSON otherwise omits points. Developers see resource diagnostics but no owner's dollar amounts.
 
 For high costs, find the costly app and rising `cost_microusd` points, then correlate with deploy history and logs. For restarts, OOMs or slowness, read each problem's `fix`; structured `change.key/value` names a proposed `[limits]` edit, and `needs_plan`/`upgrade_url` identify an owner decision. Problems are scoped since the newest deploy. Apply only the chosen change, redeploy and recheck usage.
 
-Pass `usage_high` warnings (percentage, reset date, top app) to the user. `usage_limit_reached` means account apps are paused, with data retained. Offer the supplied billing/top-up URL or ask the owner for a shared app. Added usage or the next UTC month resumes apps automatically; repeated deploy/exec or new accounts do not resolve the limit.
+Pass `usage_high` warnings (percentage, reset date, top app) to the user. `usage_limit_reached` means account apps are paused, with data retained. Offer the supplied billing/top-up URL or ask the owner for a shared app. Added usage or the account's next usage period resumes apps automatically; repeated deploy/exec or new accounts do not resolve the limit.

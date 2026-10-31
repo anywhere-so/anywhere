@@ -205,7 +205,7 @@ pub struct AppList {
 pub struct App {
     /// Why the platform paused the app, or null. Its data is kept.
     pub paused: Option<Paused>,
-    /// This UTC month’s cost, visible only to its owner.
+    /// This usage period’s cost, visible only to its owner.
     pub month_cost_microusd: Option<u64>,
     /// The numeric limits resolved at its last deploy.
     pub limits: appspec::Limits,
