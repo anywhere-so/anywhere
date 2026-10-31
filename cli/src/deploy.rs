@@ -173,7 +173,6 @@ async fn follow(
     output: Output,
 ) -> Result<ResultData, CliError> {
     let kind = checked.app.spec.kind().map_err(CliError::AppToml)?;
-    output.deploy_destination(&app.to_string(), app.owner());
     let image = checked.app.spec.image.as_deref();
     let waited = deploy_deadline(&checked.app.spec);
     let warning = operation.warning.clone();
