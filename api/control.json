@@ -2263,6 +2263,12 @@
       },
       "WorkspaceMembers": {
         "properties": {
+          "activity": {
+            "items": {
+              "$ref": "#/components/schemas/WorkspaceActivity"
+            },
+            "type": "array"
+          },
           "invitations": {
             "items": {
               "$ref": "#/components/schemas/WorkspaceInvitation"
@@ -2277,8 +2283,42 @@
           }
         },
         "required": [
+          "activity",
           "invitations",
           "members"
+        ],
+        "type": "object"
+      },
+      "WorkspaceActivity": {
+        "properties": {
+          "action": {
+            "type": "string"
+          },
+          "actor": {
+            "type": "string"
+          },
+          "at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "details": {
+            "description": "IDs and permission or spending changes only; no invitation secret or app content."
+          },
+          "id": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "target": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "action",
+          "actor",
+          "at",
+          "details",
+          "id",
+          "target"
         ],
         "type": "object"
       },

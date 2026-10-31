@@ -76,6 +76,18 @@ pub struct WorkspaceMember {
 pub struct WorkspaceMembers {
     pub members: Vec<WorkspaceMember>,
     pub invitations: Vec<WorkspaceInvitation>,
+    pub activity: Vec<WorkspaceActivity>,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize, JsonSchema)]
+pub struct WorkspaceActivity {
+    pub id: Uuid,
+    pub at: DateTime<Utc>,
+    pub actor: String,
+    pub action: String,
+    pub target: String,
+    /// IDs and permission or spending changes only; no invitation secret or app content.
+    pub details: serde_json::Value,
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize, JsonSchema)]
