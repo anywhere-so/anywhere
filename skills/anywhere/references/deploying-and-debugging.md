@@ -20,7 +20,7 @@ anywhere deploy ~/.anywhere/apps/alice/wiki --app alice/wiki
 
 Deploy stops the app, writes uploaded files into `/app`, runs the build and attempts to start the app. Uploaded paths replace their existing contents; absent paths remain. A locally deleted/renamed file therefore remains remotely until explicitly removed with `anywhere exec APP -- rm PATH`. Delete only files the requested change requires removing.
 
-The app's address answers errors while it is stopped for deployment. Web readiness requires a listener on `0.0.0.0:$PORT` within `start_timeout` (default 30 seconds); a worker must remain running for 3 seconds. Successful text output is the returned URL, or `APP runs in the background, with no web address`. Progress, operation ID and live deploy/app output go to stderr, including image layers and startup builds. `deploy_logs_unavailable` warns if output following failed; the operation still determines success. Logs resume after disconnect, with `resume_lost` if the host restarted and retained output is replayed.
+The app's address answers errors while it is stopped for deployment. Web readiness requires a listener on `0.0.0.0:$PORT` within `start_timeout` (default 30 seconds); a worker must remain running for 3 seconds. Successful text output is the returned URL, or `APP runs in the background, with no web address`; for an app that sleeps when idle, a last `note:` line on stderr says so. Progress, operation ID and live deploy/app output go to stderr, including image layers and startup builds. `deploy_logs_unavailable` warns if output following failed; the operation still determines success. Logs resume after disconnect, with `resume_lost` if the host restarted and retained output is replayed.
 
 Only one deploy per app runs at a time. `app_busy` means inspect the current operation and wait; a later accepted deploy overwrites the paths it uploads.
 
@@ -57,9 +57,9 @@ Published defaults are Free: 3 deployed apps, 1 shared vCPU/2 GiB memory/10 GiB 
 
 ## Inspect, logs and restart behavior
 
-`anywhere apps list` shows owned/shared apps, status, URL or background mode. `anywhere apps inspect NAME` adds resource settings and the 20 most recent deploys, including operation IDs, initiators and failures. Statuses: `starting`, `running`, `restarting`, `crashed`, `failed`, `stopped`; `restarts` counts restarts.
+`anywhere apps list` shows owned/shared apps, status, URL or background mode. `anywhere apps inspect NAME` adds resource settings and the 20 most recent deploys, including operation IDs, initiators and failures. Statuses: `starting`, `running`, `asleep`, `restarting`, `crashed`, `failed`, `stopped`; `restarts` counts restarts. `asleep` is healthy: the app sleeps when idle and its next request or exec wakes it ([sleep](building-apps.md#sleep)).
 
-`anywhere logs --app NAME` includes app output from the current/latest run and the previous run (newest 1 MiB each), deploy/build output and `[anywhere TIME]` lifecycle lines. `no_logs` means the app has not run. Text escapes control characters; JSON returns log text in `result.output`.
+`anywhere logs --app NAME` includes app output from the current/latest run and the previous run (newest 1 MiB each), deploy/build output and `[anywhere TIME]` lifecycle lines, including `went to sleep` and `woke up`. `no_logs` means the app has not run. Text escapes control characters; JSON returns log text in `result.output`.
 
 `--follow` streams across restarts and cannot combine with `--json`. Use the execution tool's timeout when a bounded observation is needed. The CLI reconnects from its last log position, including across the platform's 30-minute stream boundary. A host restart can replay retained output after a notice. An interrupted follow can mean sign-in expiry/revocation or lost app access; the next read clarifies the refusal. Gateway refusals never appear in app logs: inspect the browser/HTTP status and code too.
 

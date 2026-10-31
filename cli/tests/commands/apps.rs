@@ -203,6 +203,49 @@ async fn an_app_its_host_restarts_says_how_it_is_doing_and_how_often() {
 }
 
 #[tokio::test]
+async fn an_app_asleep_is_shown_asleep_as_plainly_as_one_running() {
+    let mut asleep = app();
+    asleep["running"] = json!(false);
+    asleep["status"] = json!("asleep");
+    let server = Server::start(vec![
+        reply(json!({"apps":[asleep.clone()]})),
+        reply(json!({"apps":[]})),
+    ])
+    .await;
+    let output = server.run(&["apps", "list"]).await;
+    assert!(output.status.success(), "{}", text(&output.stderr));
+    assert_eq!(
+        text(&output.stdout),
+        "hello\tasleep\tdeployed 2026-10-12 00:00:00 UTC\thttps://dev-hello.anywhereapps.test\n"
+    );
+    assert_eq!(text(&output.stderr), "", "no warning, as for a running app");
+
+    let server = Server::start(vec![
+        reply(json!({"apps":[asleep.clone()]})),
+        reply(json!({"apps":[]})),
+    ])
+    .await;
+    let output = server.run(&["--json", "apps", "list"]).await;
+    assert!(output.status.success(), "{}", text(&output.stderr));
+    let listed: Value = serde_json::from_slice(&output.stdout).unwrap();
+    assert_eq!(listed["result"]["apps"][0]["status"], "asleep");
+    assert_eq!(text(&output.stderr), "");
+
+    let server = Server::start(vec![reply(
+        json!({"app":asleep,"deploys_truncated":false,"deploys":[]}),
+    )])
+    .await;
+    let output = server.run(&["apps", "inspect", "hello"]).await;
+    assert!(output.status.success(), "{}", text(&output.stderr));
+    assert!(
+        text(&output.stdout)
+            .starts_with("Hello (hello)\nasleep\nhttps://dev-hello.anywhereapps.test\n"),
+        "{}",
+        text(&output.stdout)
+    );
+}
+
+#[tokio::test]
 async fn a_background_app_says_it_runs_in_the_background_in_place_of_an_address() {
     let mut ticker = app();
     ticker["name"] = json!("ticker");

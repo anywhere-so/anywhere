@@ -49,10 +49,42 @@ The folder name is the app name unless `deploy --app` overrides it: lowercase le
 | `image` | Public Docker/OCI image reference; no build/static mode. Uses its own command unless web/worker overrides it. |
 | `start_timeout` | Web readiness timeout in seconds, 1–1200; default 30. |
 | `icon` | Relative PNG path, at most 1 MiB and 1024×1024 pixels; keep it outside ignored files. |
+| `sleep` | `"auto"` sleeps when idle and wakes on the next request; `"never"` always runs. Default `auto` for web apps, static sites and image apps with an address, `never` for workers; see [sleep](#sleep). |
 
 Choose exactly one mode: web, worker or static. Unknown keys are refused. Put top-level fields before `[processes]` and `[limits]`; a misplaced key belongs to the preceding TOML table.
 
-A combined web/worker app still has one platform command. For example, `web = "sh start.sh"` can run `node worker.js &` then `exec node server.js`. The platform watches the server; it will not independently restart a failed worker.
+A combined web/worker app still has one platform command. For example, `web = "sh start.sh"` can run `node worker.js &` then `exec node server.js`. The platform watches the server; it will not independently restart a failed worker. With `sleep = "auto"`, that worker pauses whenever the app sleeps.
+
+## Sleep
+
+```toml
+sleep = "auto"   # default for apps with an address: sleeps when idle, wakes on the next request
+sleep = "never"  # always running; pays for its memory all the time
+```
+
+Left out, `sleep` is chosen at each deploy by the app's kind; an existing app takes `auto` at its next deploy. A worker has no address to wake it by, so `sleep = "auto"` with `worker` is refused with `sleep_needs_an_address`: omit it or use `never`.
+
+An app is in use while it has an open request, WebSocket, `anywhere exec` or upload, or used more than a trickle of CPU or network in the last few seconds. About 30 seconds after its last use it sleeps; an app woken soon after sleeping stays awake longer next time, up to a few minutes. The gateway adds a small presence script to ordinary HTML page loads. A visible top-level tab with input in the last minute keeps the app awake without requests to app code; hiding it cancels presence, and returning or new input requests a wake. An idle visible tab stops renewing, and the ordinary idle time follows the last presence stream. The app's own timers and reading logs or usage don't count.
+
+Presence preserves the app's Content-Security-Policy. Allow the same-origin `/_anywhere/presence.js` in `script-src` (or `script-src-elem`) and same-origin fetches in `connect-src`. With nonce-only policies, include `<script src="/_anywhere/presence.js" nonce="YOUR_RESPONSE_NONCE" defer></script>` yourself. Compressed, non-UTF-8, attachment or `Cache-Control: no-transform` pages aren't injected; include the script yourself if wanted. The first navigation still waits for a wake, and returning and clicking immediately may too.
+
+Any request or `anywhere exec` wakes it from a saved copy, usually in well under a second, with its memory and in-progress state kept. The request waits for the wake rather than failing. After its host reboots or gVisor is upgraded, it starts fresh instead, as after a restart; a browser page load meanwhile sees a short page with the app's icon and "Starting…" that reloads by itself. A request that still can't reach the app gets 503 `app_waking`, which is retryable: the app is waking, so retry in a few seconds.
+
+**Keep `auto` for** apps people or agents open and use: CRUD apps, dashboards, tools, sites and APIs. Asleep, they cost only disk.
+
+**Use `never` for** apps that must act when nobody is asking:
+- bots connected to Discord, Slack, Telegram or similar;
+- timers, cron libraries, reminders, digests, or polling another service;
+- work that carries on silently after a request ends.
+
+**While an app sleeps:**
+- Nothing runs. Timers and background work pause; any that came due run once on wake.
+- Outgoing connections, such as to databases or other services, close. Reconnect on error; most libraries do.
+- The clock jumps forward on wake.
+
+To sleep well, keep anything that matters on disk (such as SQLite), not only in memory; reconnect when a call fails; and finish work before responding, or stream while working.
+
+**How to tell:** `anywhere apps list` shows `asleep`, which is healthy. `anywhere logs` shows `went to sleep` and `woke up` lines. `anywhere usage NAME` reports `slept_with_connections` when the app went to sleep holding outgoing connections, the sign of a bot: set `sleep = "never"` if it must keep them. A deploy of an app that sleeps ends with a `note:` saying so; with `--json`, the deploy result's `sleep` is `auto` or `never`. A wake that failed shows in `anywhere logs` as `couldn't wake from its saved copy; the next request starts it fresh`, and the request that hit it got 503 `sandbox_unavailable`, which is retryable: retry it, and the app starts fresh.
 
 ## Runtime and persistence
 

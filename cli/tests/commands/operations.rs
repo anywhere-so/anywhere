@@ -322,8 +322,56 @@ async fn a_background_deploy_names_the_app_and_has_no_url() {
         .await;
     assert_eq!(
         success(&output),
-        json!({"operation": ID, "app": "ticker", "url": null})
+        json!({"operation": ID, "app": "ticker", "url": null, "sleep": "never"})
     );
+}
+
+#[tokio::test]
+async fn a_deploy_ends_saying_the_app_sleeps_when_idle_only_if_it_does() {
+    let note = "note: Sleeps when idle and wakes on the next request (`sleep = \"auto\"`). Timers and background work pause while it sleeps; use `sleep = \"never\"` if it must keep running.\n";
+    for (name, toml, background, sleeps) in [
+        ("plain", TOML.to_owned(), false, true),
+        ("auto", format!("sleep = \"auto\"\n{TOML}"), false, true),
+        ("never", format!("sleep = \"never\"\n{TOML}"), false, false),
+        ("ticker", WORKER_TOML.to_owned(), true, false),
+    ] {
+        let dir = tempfile::tempdir().unwrap();
+        let app = app_dir(&dir, name, &toml);
+        let mut done = operation("succeeded");
+        if background {
+            done["url"] = Value::Null;
+        }
+        let server =
+            Server::start(vec![personal_workspace(), no_logs(), started(done.clone())]).await;
+        let output = server.run(&["deploy", app.to_str().unwrap()]).await;
+        assert!(output.status.success(), "{name}: {}", text(&output.stderr));
+        let stderr = text(&output.stderr);
+        assert_eq!(stderr.ends_with(note), sleeps, "{name}: {stderr}");
+        assert_eq!(
+            stderr.matches("Sleeps when idle").count(),
+            usize::from(sleeps),
+            "{name}"
+        );
+        assert!(
+            !text(&output.stdout).contains("Sleeps"),
+            "{name}: stdout stays the address"
+        );
+
+        // With --json no line is added; the result says whether the app sleeps.
+        // A new folder, since the deploy bound the first to that server.
+        let dir = tempfile::tempdir().unwrap();
+        let app = app_dir(&dir, name, &toml);
+        let server = Server::start(vec![personal_workspace(), no_logs(), started(done)]).await;
+        let output = server
+            .run(&["deploy", app.to_str().unwrap(), "--json"])
+            .await;
+        assert_eq!(
+            success(&output)["sleep"],
+            if sleeps { "auto" } else { "never" },
+            "{name}"
+        );
+        assert!(!text(&output.stderr).contains("Sleeps when idle"), "{name}");
+    }
 }
 
 #[tokio::test]

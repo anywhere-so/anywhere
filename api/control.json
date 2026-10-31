@@ -269,6 +269,13 @@
               "failed"
             ],
             "type": "string"
+          },
+          {
+            "description": "It's healthy, and asleep: it sleeps when nobody uses it (`sleep = \"auto\"`), and nothing of it runs now. Its next request or `anywhere exec` wakes it, which takes a moment.",
+            "enum": [
+              "asleep"
+            ],
+            "type": "string"
           }
         ]
       },
@@ -712,6 +719,15 @@
             ],
             "description": "The app's one command. A static site has none, and leaves this out."
           },
+          "sleep": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/Sleep"
+              }
+            ],
+            "description": "Whether the app sleeps when nobody uses it: `\"auto\"`, so it's saved to disk once idle and woken by its next request or `anywhere exec`, or `\"never\"`. Left out, the platform chooses by the kind of app: `\"auto\"` for a web app or static site, `\"never\"` for a background app, which may not sleep.",
+            "nullable": true
+          },
           "start_timeout": {
             "description": "How many seconds a web app gets to start listening on its port, from 1 to 1200, whenever a deploy or a secret change starts it: 30 if it's left out. Restarts after a crash wait for nothing.",
             "format": "uint32",
@@ -774,6 +790,25 @@
           }
         },
         "type": "object"
+      },
+      "Sleep": {
+        "description": "Whether an app sleeps when nobody uses it.",
+        "oneOf": [
+          {
+            "description": "It sleeps once idle, and its next request or `anywhere exec` wakes it.",
+            "enum": [
+              "auto"
+            ],
+            "type": "string"
+          },
+          {
+            "description": "It runs all the time.",
+            "enum": [
+              "never"
+            ],
+            "type": "string"
+          }
+        ]
       },
       "AppIdentity": {
         "properties": {
@@ -1485,6 +1520,13 @@
             "description": "Its disk is at least 99% full, so its writes are failing.",
             "enum": [
               "disk_full"
+            ],
+            "type": "string"
+          },
+          {
+            "description": "It went to sleep holding outgoing connections, which a sleep cuts.",
+            "enum": [
+              "slept_with_connections"
             ],
             "type": "string"
           }
@@ -2500,7 +2542,7 @@
     }
   },
   "info": {
-    "description": "Contract 7. The `anywhere` CLI says so in every request's User-Agent, `anywhere/<version> (contract 7)`, and the gateway refuses a CLI built for another contract, or one from before them (`anywhere/<version>` alone), with 400 `cli_outdated` before the request reaches this API, whatever its route or body. Its message says how to install the CLI this platform serves. Other clients are told nothing.",
+    "description": "Contract 8. The `anywhere` CLI says so in every request's User-Agent, `anywhere/<version> (contract 8)`, and the gateway refuses a CLI built for another contract, or one from before them (`anywhere/<version>` alone), with 400 `cli_outdated` before the request reaches this API, whatever its route or body. Its message says how to install the CLI this platform serves. Other clients are told nothing.",
     "title": "Control API",
     "version": "0.1.0"
   },

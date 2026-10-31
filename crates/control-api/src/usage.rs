@@ -263,6 +263,8 @@ pub enum UsageProblemCode {
     DiskNearlyFull,
     /// Its disk is at least 99% full, so its writes are failing.
     DiskFull,
+    /// It went to sleep holding outgoing connections, which a sleep cuts.
+    SleptWithConnections,
 }
 
 impl UsageProblemCode {
@@ -272,6 +274,7 @@ impl UsageProblemCode {
             Self::CpuLimited => "cpu_limited",
             Self::DiskNearlyFull => "disk_nearly_full",
             Self::DiskFull => "disk_full",
+            Self::SleptWithConnections => "slept_with_connections",
         }
     }
 }

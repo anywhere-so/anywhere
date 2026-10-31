@@ -42,11 +42,13 @@ pub enum ResultData {
     },
     App(Box<AppDetails>),
     Operation(OperationSummary),
-    /// A background app's deploy has no `url`.
+    /// A background app's deploy has no `url`. `sleep` is whether the app
+    /// sleeps when idle, as its `app.toml` says or by its kind.
     Deploy {
         operation: Uuid,
         app: String,
         url: Option<String>,
+        sleep: appspec::Sleep,
         #[serde(skip_serializing_if = "Option::is_none")]
         warning: Option<Warning>,
     },
@@ -322,13 +324,20 @@ fn show(result: ResultData) {
     match result {
         ResultData::Workspace(value) => println!("{}", plain(&value.to_string())),
         ResultData::Licenses { text } => println!("{text}"),
-        ResultData::Deploy { app, url, .. } => match url {
-            Some(url) => println!("{}", plain(&url)),
-            None => println!(
-                "{} runs in the background, with no web address",
-                plain(&app)
-            ),
-        },
+        ResultData::Deploy {
+            app, url, sleep, ..
+        } => {
+            match url {
+                Some(url) => println!("{}", plain(&url)),
+                None => println!(
+                    "{} runs in the background, with no web address",
+                    plain(&app)
+                ),
+            }
+            if let Some(note) = sleep_note(sleep) {
+                eprintln!("note: {note}");
+            }
+        }
         ResultData::Check(summary) => {
             let plan = match (summary.plan, &summary.unchecked) {
                 (Some(control_api::Plan::Free), _) => "your Free plan allows it".to_owned(),
@@ -538,6 +547,17 @@ fn show_app(details: AppDetails) {
     }
 }
 
+/// What a deploy's text output ends with for an app that sleeps when idle, so
+/// an agent learns that its timers pause; nothing for one that never sleeps.
+pub fn sleep_note(sleep: appspec::Sleep) -> Option<&'static str> {
+    match sleep {
+        appspec::Sleep::Auto => Some(
+            "Sleeps when idle and wakes on the next request (`sleep = \"auto\"`). Timers and background work pause while it sleeps; use `sleep = \"never\"` if it must keep running.",
+        ),
+        appspec::Sleep::Never => None,
+    }
+}
+
 /// What a change that succeeded leaves to do, on standard error.
 fn show_warning(warning: &Warning) {
     eprintln!(
@@ -563,6 +583,7 @@ fn status(app: &App) -> String {
         AppStatus::Crashed => "crashed",
         AppStatus::Stopped => "stopped",
         AppStatus::Failed => "failed",
+        AppStatus::Asleep => "asleep",
     };
     match app.restarts {
         0 => status.to_owned(),
