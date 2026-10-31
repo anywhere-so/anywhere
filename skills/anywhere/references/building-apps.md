@@ -66,7 +66,7 @@ Left out, `sleep` is chosen at each deploy by the app's kind; an existing app ta
 
 An app is in use while it has an open request, WebSocket, `anywhere exec` or upload, or used more than a trickle of CPU or network in the last few seconds. About 30 seconds after its last use it sleeps; an app woken soon after sleeping stays awake longer next time, up to a few minutes. A browser tab with nothing connected, the app's own timers, and reading its logs or usage don't count.
 
-Any request or `anywhere exec` wakes it from a saved copy, usually in well under a second, with its memory and in-progress state kept. The request waits for the wake rather than failing. After a platform update or host restart it starts fresh instead, as after a restart; a browser page load meanwhile sees a short page with the app's icon and "Starting…" that reloads by itself. A request that still can't reach the app gets 503 `app_waking`, which is retryable: the app is waking, so retry in a few seconds.
+Any request or `anywhere exec` wakes it from a saved copy, usually in well under a second, with its memory and in-progress state kept. The request waits for the wake rather than failing. After its host reboots or gVisor is upgraded, it starts fresh instead, as after a restart; a browser page load meanwhile sees a short page with the app's icon and "Starting…" that reloads by itself. A request that still can't reach the app gets 503 `app_waking`, which is retryable: the app is waking, so retry in a few seconds.
 
 **Keep `auto` for** apps people or agents open and use: CRUD apps, dashboards, tools, sites and APIs. Asleep, they cost only disk.
 
@@ -82,7 +82,7 @@ Any request or `anywhere exec` wakes it from a saved copy, usually in well under
 
 To sleep well, keep anything that matters on disk (such as SQLite), not only in memory; reconnect when a call fails; and finish work before responding, or stream while working.
 
-**How to tell:** `anywhere apps list` shows `asleep`, which is healthy. `anywhere logs` shows `went to sleep` and `woke up` lines. `anywhere usage NAME` reports `slept_with_connections` when the app went to sleep holding outgoing connections, the sign of a bot: set `sleep = "never"` if it must keep them. A deploy of an app that sleeps ends with a `note:` saying so; with `--json`, the deploy result's `sleep` is `auto` or `never`.
+**How to tell:** `anywhere apps list` shows `asleep`, which is healthy. `anywhere logs` shows `went to sleep` and `woke up` lines. `anywhere usage NAME` reports `slept_with_connections` when the app went to sleep holding outgoing connections, the sign of a bot: set `sleep = "never"` if it must keep them. A deploy of an app that sleeps ends with a `note:` saying so; with `--json`, the deploy result's `sleep` is `auto` or `never`. A wake that failed shows in `anywhere logs` as `couldn't wake from its saved copy; the next request starts it fresh`, and the request that hit it got 503 `sandbox_unavailable`, which is retryable: retry it, and the app starts fresh.
 
 ## Runtime and persistence
 
