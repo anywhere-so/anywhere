@@ -11,6 +11,7 @@ import sys
 OPERATIONS = {
     'account_usage',
     'workspace_list',
+    'workspace_usage',
     'workspace_create',
     'workspace_view',
     'workspace_members',

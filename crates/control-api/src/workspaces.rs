@@ -188,3 +188,9 @@ pub struct WorkspaceAppMemberPath {
 pub struct WorkspaceAppGrantUpdate {
     pub role: crate::ShareRole,
 }
+
+#[derive(Clone, Debug, Deserialize, Serialize, JsonSchema)]
+pub struct WorkspaceCheckoutPath {
+    pub workspace: String,
+    pub session: String,
+}

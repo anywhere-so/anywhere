@@ -3889,6 +3889,39 @@
         }
       }
     },
+    "/v1/workspaces/{workspace}/usage": {
+      "get": {
+        "operationId": "workspace_usage",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "workspace",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AccountUsage"
+                }
+              }
+            },
+            "description": "successful operation"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
     "/v2/cli-logins": {
       "post": {
         "description": "minutes for a person to approve it in the portal, at `approve_url`, where they type its `user_code`. Only the CLI that started it gets its `device_code`, which collects the token. While too many logins wait, it's `too_many_cli_logins`, and while another start is under way, `cli_logins_busy`; for each, trying again later is safe.",
