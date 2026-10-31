@@ -5,8 +5,6 @@
 
 use std::path::PathBuf;
 
-use naming::AppName;
-
 use crate::app::App;
 use crate::app_ref::AppRef;
 use crate::check::Checked;
@@ -18,7 +16,12 @@ use crate::{control, deploy};
 const IDLE: &str = "sleep infinity";
 
 pub async fn new(name: &str, output: &mut Output) -> Result<ResultData, CliError> {
-    let name = AppName::parse(name).map_err(|source| CliError::NewName { source })?;
+    let selected = if name.contains('/') {
+        AppRef::parse(name)?
+    } else {
+        AppRef::own(naming::AppName::parse(name).map_err(|source| CliError::NewName { source })?)
+    };
+    let name = selected.name.clone();
     let (control, uploads) = control::connect()?;
     // App names are lowercase letters, digits and hyphens, so they need no
     // quoting in TOML.
@@ -39,14 +42,7 @@ pub async fn new(name: &str, output: &mut Output) -> Result<ResultData, CliError
         },
         true,
     )?;
-    let result = deploy::run(
-        &control,
-        &uploads,
-        AppRef::own(name.clone()),
-        &checked,
-        output,
-    )
-    .await?;
+    let result = deploy::run(&control, &uploads, selected, &checked, output).await?;
     output.next(
         &format!("anywhere exec {name} -- <command>"),
         &format!(

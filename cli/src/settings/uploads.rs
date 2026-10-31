@@ -56,7 +56,7 @@ fn invalid_target() -> CliError {
 /// Checks that `ANYWHERE_API` is a canonical origin the token may go to:
 /// HTTPS, or plain HTTP to a loopback host only, where the token never leaves
 /// the machine.
-pub(super) fn api_origin(api: &str) -> Result<Url, CliError> {
+pub(crate) fn api_origin(api: &str) -> Result<Url, CliError> {
     let invalid = || CliError::SettingInvalid {
         name: "ANYWHERE_API",
         problem: "must be the control API's canonical HTTPS origin, such as https://anywhere.so, \

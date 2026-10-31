@@ -21,6 +21,10 @@ pub enum CliError {
     #[error("{detail}")]
     Arguments { detail: String },
     #[error(
+        "{detail}; inspect the project destination with `anywhere workspaces list` and bind it explicitly; nothing falls back to personal"
+    )]
+    Binding { detail: String },
+    #[error(
         "the control API didn't answer before the read's deadline; check the network and try this read again"
     )]
     ReadTimedOut,
@@ -324,6 +328,7 @@ impl CliError {
     /// errors keep the code the platform gave.
     pub fn code(&self) -> &str {
         match self {
+            CliError::Binding { .. } => "workspace_binding_invalid",
             CliError::Arguments { .. } => "argument_invalid",
             CliError::ReadTimedOut => "api_timed_out",
             CliError::OperationTimedOut { .. } => "operation_timed_out",

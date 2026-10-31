@@ -25,6 +25,7 @@ pub struct Output {
 #[derive(Serialize)]
 #[serde(untagged)]
 pub enum ResultData {
+    Workspace(serde_json::Value),
     Licenses {
         text: String,
     },
@@ -280,6 +281,7 @@ impl Output {
 
 fn show(result: ResultData) {
     match result {
+        ResultData::Workspace(value) => println!("{}", plain(&value.to_string())),
         ResultData::Licenses { text } => println!("{text}"),
         ResultData::Deploy { app, url, .. } => match url {
             Some(url) => println!("{}", plain(&url)),

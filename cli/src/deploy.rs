@@ -44,10 +44,12 @@ pub async fn deploy(
     output: &mut Output,
 ) -> Result<ResultData, CliError> {
     let named = app.map(AppRef::parse).transpose()?;
-    let (control, uploads) = control::connect()?;
+    let (control, uploads) = control::connect_at(dir)?;
     let checked = check::read(dir, named.as_ref().map(|app| app.name.clone()))?;
     let app = named.unwrap_or_else(|| AppRef::own(checked.app.name.clone()));
-    run(&control, &uploads, app, &checked, output).await
+    let result = run(&control, &uploads, app.clone(), &checked, output).await?;
+    crate::workspaces::bind(dir, &app, false, *output).await?;
+    Ok(result)
 }
 
 /// Starts the deploy `checked` holds, of `app`, and follows it until it ends.

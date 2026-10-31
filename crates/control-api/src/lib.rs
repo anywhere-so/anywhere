@@ -970,3 +970,6 @@ mod tests {
         assert!(serde_json::from_value::<SecretsRequest>(json).is_err());
     }
 }
+
+mod preconditions;
+pub use preconditions::*;

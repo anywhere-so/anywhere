@@ -12,6 +12,7 @@ use uuid::Uuid;
 mod api;
 mod app;
 mod app_ref;
+mod binding;
 mod check;
 mod control;
 mod delete;
@@ -33,6 +34,7 @@ mod skill;
 mod untar;
 mod upload;
 mod usage;
+mod workspaces;
 
 use app_ref::AppRef;
 use error::CliError;
@@ -50,6 +52,9 @@ struct Cli {
     /// Emit a JSON result on stdout and JSON diagnostic lines on stderr.
     #[arg(long, global = true)]
     json: bool,
+    /// Personal or team workspace namespace. Never changes a global default.
+    #[arg(long, global = true)]
+    workspace: Option<String>,
     #[command(subcommand)]
     command: Command,
 }
@@ -58,6 +63,11 @@ struct Cli {
 enum Command {
     /// Show licenses, dependency notices and source links.
     Licenses,
+    /// Manage personal and team workspaces, memberships and project bindings.
+    Workspaces {
+        #[command(subcommand)]
+        command: workspaces::Command,
+    },
     /// Sign the CLI in: print a link and a code, open the link in the browser
     /// when standard output is a terminal, where a person approves it in the
     /// portal, wait for the approval, and save the API's address and a 30-day agent
@@ -399,7 +409,7 @@ fn main() -> ExitCode {
         .enable_all()
         .build()
     {
-        Ok(runtime) => runtime.block_on(run(cli.command, &mut output)),
+        Ok(runtime) => runtime.block_on(run(cli.command, cli.workspace, &mut output)),
         Err(error) => Err(CliError::Internal {
             detail: format!("couldn't start the async runtime: {error}"),
         }),
@@ -429,8 +439,34 @@ enum Outcome {
     Exit(u8),
 }
 
-async fn run(command: Command, output: &mut Output) -> Result<Outcome, CliError> {
+async fn run(
+    mut command: Command,
+    workspace: Option<String>,
+    output: &mut Output,
+) -> Result<Outcome, CliError> {
+    if matches!(
+        &command,
+        Command::Apps {
+            command: Apps::List
+        } | Command::Usage { app: None, .. }
+    ) {
+        let bound = binding::read(&app::working_dir()?)?;
+        let selected = workspace
+            .as_deref()
+            .or_else(|| bound.as_ref().map(|binding| binding.workspace.as_str()));
+        if let Some(selected) = selected {
+            return if matches!(&command, Command::Apps { .. }) {
+                workspaces::apps(selected).await.map(Outcome::Data)
+            } else {
+                workspaces::usage(selected).await.map(Outcome::Data)
+            };
+        }
+    }
+    workspaces::scope(&mut command, workspace.as_deref(), *output).await?;
     match command {
+        Command::Workspaces { command } => {
+            workspaces::run(command, output).await.map(Outcome::Data)
+        }
         Command::Licenses => Ok(Outcome::Data(ResultData::Licenses {
             text: concat!(
                 include_str!("../../LICENSE"),

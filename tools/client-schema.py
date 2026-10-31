@@ -30,6 +30,7 @@ OPERATIONS = {
     'app_access_set',
     'app_delete',
     'app_list',
+    'app_identity',
     'app_logs',
     'app_ticket_create',
     'app_usage',

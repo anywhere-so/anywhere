@@ -24,6 +24,20 @@ pub struct Control {
     pub api: String,
 }
 
+pub fn connect_at(
+    dir: &std::path::Path,
+) -> Result<(Control, crate::settings::UploadClient), CliError> {
+    let settings = Settings::from_env()?;
+    let clients = settings.clients_at(dir)?;
+    Ok((
+        Control {
+            client: api::Client::new_with_client(&settings.api, clients.api),
+            api: settings.api,
+        },
+        clients.uploads,
+    ))
+}
+
 pub fn connect() -> Result<(Control, crate::settings::UploadClient), CliError> {
     with(Settings::from_env()?)
 }

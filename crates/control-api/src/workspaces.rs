@@ -194,3 +194,22 @@ pub struct WorkspaceCheckoutPath {
     pub workspace: String,
     pub session: String,
 }
+
+#[derive(Clone, Debug, Deserialize, Serialize, JsonSchema)]
+pub struct AppIdentity {
+    pub workspace_id: Uuid,
+    pub workspace: String,
+    pub app_id: Uuid,
+    pub app: String,
+}
+
+/// Local project metadata, never a credential and never a mutable global default.
+#[derive(Clone, Debug, PartialEq, Eq, Deserialize, Serialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct ProjectBinding {
+    pub api: String,
+    pub workspace_id: Uuid,
+    pub workspace: String,
+    pub app_id: Uuid,
+    pub app: String,
+}

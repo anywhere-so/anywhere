@@ -15,7 +15,7 @@ pub const API_TIMEOUT: Duration = Duration::from_secs(30);
 const CONNECT_TIMEOUT: Duration = Duration::from_secs(10);
 
 pub mod credentials;
-mod uploads;
+pub(crate) mod uploads;
 pub use uploads::UploadClient;
 
 const WHAT_API: &str = "the control API's address, such as https://anywhere.so";
@@ -76,6 +76,10 @@ impl Settings {
     /// configured API origin; the gateway checks and strips it before the
     /// sandbox hop.
     pub fn clients(&self) -> Result<Clients, CliError> {
+        self.clients_at(&crate::app::working_dir()?)
+    }
+
+    pub fn clients_at(&self, dir: &Path) -> Result<Clients, CliError> {
         let mut token = HeaderValue::from_str(&format!("Bearer {}", self.token)).map_err(|_| {
             CliError::SettingInvalid {
                 name: "ANYWHERE_TOKEN",
@@ -85,6 +89,7 @@ impl Settings {
         token.set_sensitive(true);
         let mut headers = HeaderMap::new();
         headers.insert(AUTHORIZATION, token.clone());
+        crate::binding::headers(&mut headers, &self.api, dir)?;
         let api = self
             .client()
             .default_headers(headers.clone())
