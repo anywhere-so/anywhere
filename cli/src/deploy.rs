@@ -58,10 +58,7 @@ pub async fn run(
     checked: &Checked,
     output: &mut Output,
 ) -> Result<ResultData, CliError> {
-    let payer = app.owner().unwrap_or("your personal workspace");
-    output.progress(&format!(
-        "Deploying {app}; runtime usage is billed to {payer}"
-    ));
+    output.deploy_destination(&app.to_string(), app.owner());
     let image = checked.app.spec.image.as_deref();
     // Capture before POST: the host may write the deploy's first line before
     // the accepted operation reaches us. A failed read warns after acceptance.
@@ -176,10 +173,7 @@ async fn follow(
     output: Output,
 ) -> Result<ResultData, CliError> {
     let kind = checked.app.spec.kind().map_err(CliError::AppToml)?;
-    let payer = app.owner().unwrap_or("your personal workspace");
-    output.progress(&format!(
-        "Deploying {app}; runtime usage is billed to {payer}"
-    ));
+    output.deploy_destination(&app.to_string(), app.owner());
     let image = checked.app.spec.image.as_deref();
     let waited = deploy_deadline(&checked.app.spec);
     let warning = operation.warning.clone();
