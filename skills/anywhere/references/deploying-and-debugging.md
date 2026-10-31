@@ -2,15 +2,17 @@
 
 ## Choose the target and validate
 
-For an existing app, inspect its current limits before deploying. A bare app name targets the user's app; a shared app requires `OWNER/NAME`:
+Locate or create the app's local folder in order: `.` when `./app.toml` is already in the current directory; `.anywhere/apps/<app>` when the app belongs with the current project repository; or `~/.anywhere/apps/<app>` by default (`<owner>/<app>` for a shared app).
+
+For an existing app, run `anywhere apps inspect NAME` before editing or deploying to check its current `[limits]` and whether a newer deploy happened from another machine or developer. A bare app name targets the user's app; a shared app requires `OWNER/NAME`:
 
 ```sh
 anywhere apps inspect alice/wiki
-anywhere check ./wiki
-anywhere deploy ./wiki --app alice/wiki
+anywhere check ~/.anywhere/apps/alice/wiki
+anywhere deploy ~/.anywhere/apps/alice/wiki --app alice/wiki
 ```
 
-`anywhere deploy ./wiki` instead targets the user's own `wiki`. Preserve the qualified target for logs, secrets, exec and pull too; see [shared apps](managing-apps.md#apps-shared-with-the-user).
+`anywhere deploy ~/.anywhere/apps/alice/wiki` without `--app alice/wiki` instead targets the user's own `wiki`. Preserve the qualified target for logs, secrets, exec and pull too; see [shared apps](managing-apps.md#apps-shared-with-the-user).
 
 `anywhere check DIR` validates configuration and selected upload files offline; when signed in it also reads current plan ceilings. `plan_checked` reports whether it did. For a shared app, the deployment checks the owner's ceilings. Upload excludes `.git`, `.env`, `.env.*` and files ignored by the folder's `.gitignore` rules. Limits: 50,000 files, 1 GiB total, 30 MiB/file. Exclude local dependencies and runtime data. Static output has a [special upload rule](building-apps.md#static-sites).
 
@@ -77,7 +79,14 @@ anywhere exec notes -- cat report.csv > report.csv
 anywhere exec notes -- sh -c 'apt-get update && apt-get install -y ffmpeg'
 ```
 
-`anywhere pull APP PATH [DIR]` copies a remote folder into an empty/missing local directory, default `./APP` without its owner. It includes databases, dependencies and all other contents, regardless of `.gitignore`. It refuses links escaping that folder (`pull_link_unsafe`), including typical `.venv/bin/python3` links. Prefer narrow source folders such as `/app/src` when full `/app` contains those links or large state. Review upload exclusions before redeploying pulled files.
+`anywhere pull APP PATH [DIR]` copies a remote folder into an empty/missing local directory. Always pass `DIR` explicitly—such as `~/.anywhere/apps/APP` (or `.anywhere/apps/APP` in a project repo, and `~/.anywhere/apps/OWNER/APP` for a shared app)—because omitting `DIR` writes into `./APP` in the current working directory and pollutes whatever repository the session is in:
+
+```sh
+anywhere pull notes /app ~/.anywhere/apps/notes
+anywhere pull alice/wiki /app ~/.anywhere/apps/alice/wiki
+```
+
+Pull includes databases, dependencies and all other contents under `PATH`, regardless of `.gitignore`. It refuses links escaping that folder (`pull_link_unsafe`), including typical `.venv/bin/python3` links. Prefer narrow source folders such as `/app/src` when full `/app` contains those links or large state. Review upload exclusions before redeploying pulled files.
 
 ## Automation and verification
 
