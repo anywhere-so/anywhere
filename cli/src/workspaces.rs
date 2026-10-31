@@ -177,7 +177,7 @@ pub async fn bind(
     dir: &Path,
     app: &AppRef,
     replace: bool,
-    output: Output,
+    _output: Output,
 ) -> Result<ResultData, CliError> {
     let (control, _) = control::connect()?;
     let found = control
@@ -194,7 +194,6 @@ pub async fn bind(
         app: found.app,
     };
     binding::write(dir, &binding, replace)?;
-    output.progress("Project bound to stable workspace and app IDs in .anywhere/project.json");
     data(binding)
 }
 

@@ -23,6 +23,24 @@ pub async fn new(name: &str, output: &mut Output) -> Result<ResultData, CliError
     };
     let name = selected.name.clone();
     let (control, uploads) = control::connect()?;
+    if let Some(owner) = selected.owner() {
+        let workspaces = control
+            .client
+            .workspace_list()
+            .await
+            .map_err(|e| control.error(e))?
+            .into_inner();
+        if !workspaces.workspaces.iter().any(|workspace| {
+            workspace.namespace == owner
+                && workspace.kind == control_api::WorkspaceKind::Team
+                && workspace.can_create
+        }) {
+            return Err(CliError::NewWorkspace {
+                workspace: owner.to_owned(),
+            });
+        }
+    }
+
     // App names are lowercase letters, digits and hyphens, so they need no
     // quoting in TOML.
     let spec = appspec::parse(&format!(

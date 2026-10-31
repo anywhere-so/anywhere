@@ -53,6 +53,10 @@ pub enum CliError {
     #[error("{source}")]
     NewName { source: NameError },
     #[error(
+        "cannot create an app in {workspace}; choose your personal namespace or a team where you have an assigned paid developer seat"
+    )]
+    NewWorkspace { workspace: String },
+    #[error(
         "in OWNER/NAME, {source}; name an app as `anywhere apps list` shows it: NAME for one of yours, OWNER/NAME for one whose owner made you a developer"
     )]
     QualifiedName { source: NameError },
@@ -340,6 +344,7 @@ impl CliError {
             | CliError::LookupName { source }
             | CliError::NewName { source }
             | CliError::QualifiedName { source } => source.code(),
+            CliError::NewWorkspace { .. } => "invalid_app_name",
             CliError::AppRefSlashes { .. } => "invalid_app_name",
             CliError::OwnerOnly => "owner_only",
             CliError::AppTomlMissing { .. } => "app_toml_missing",

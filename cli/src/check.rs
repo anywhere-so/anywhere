@@ -56,7 +56,18 @@ pub struct Summary {
 /// their plan ([`plan`]). Another owner's app is held to that owner's plan,
 /// which only its deploy reads.
 pub async fn check(dir: &Path, app: Option<&str>, output: Output) -> Result<Summary, CliError> {
-    let named = app.map(AppRef::parse).transpose()?;
+    let mut named = app.map(AppRef::parse).transpose()?;
+    if let Some(owner) = named.as_ref().and_then(|app| app.owner.as_ref())
+        && let Some(control) = control::connect_if_signed_in()?
+        && control
+            .me(Instant::now() + API_TIMEOUT, output)
+            .await?
+            .username
+            == owner.as_str()
+        && let Some(app) = named.as_mut()
+    {
+        app.owner = None;
+    }
     let checked = read(dir, named.as_ref().map(|app| app.name.clone()))?;
     let (plan, url, unchecked) = match named.as_ref().and_then(|app| app.owner.as_ref()) {
         Some(owner) => (
