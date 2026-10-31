@@ -154,7 +154,7 @@ impl Server {
                     None => ("application/json", answer.body.to_string().into_bytes()),
                 };
                 let mut response = format!(
-                    "HTTP/1.1 {} Test\r\nContent-Type: {kind}\r\nContent-Length: {}\r\nConnection: close\r\n\r\n",
+                    "HTTP/1.1 {} Test\r\nContent-Type: {kind}\r\nContent-Length: {}\r\nConnection: close\r\nApp-ID: 01999dd0-7f9a-7000-8000-000000000002\r\nWorkspace-ID: 01999dd0-7f9a-7000-8000-000000000003\r\nWorkspace-Namespace: dev\r\n\r\n",
                     answer.status,
                     body.len(),
                 )

@@ -224,6 +224,7 @@ async fn starting_a_deploy_is_never_retried_and_is_not_safe_to_repeat_blindly() 
     std::fs::create_dir(&app).unwrap();
     std::fs::write(app.join("app.toml"), TOML).unwrap();
     let server = Server::start(vec![
+        personal_workspace(),
         no_logs(),
         Reply {
             status: 503,
@@ -239,6 +240,7 @@ async fn starting_a_deploy_is_never_retried_and_is_not_safe_to_repeat_blindly() 
     assert_eq!(
         server.paths(),
         [
+            "GET /v1/workspaces HTTP/1.1",
             "GET /v1/apps/hello/logs?after=end&events=true&follow=false HTTP/1.1",
             "POST /v1/apps/hello/deploys HTTP/1.1"
         ]
@@ -252,6 +254,7 @@ async fn a_lost_deploy_reply_does_not_cause_a_second_post() {
     std::fs::create_dir(&app).unwrap();
     std::fs::write(app.join("app.toml"), TOML).unwrap();
     let server = Server::start(vec![
+        personal_workspace(),
         no_logs(),
         Reply {
             status: 0,
@@ -268,10 +271,17 @@ async fn a_lost_deploy_reply_does_not_cause_a_second_post() {
     assert_eq!(
         server.paths(),
         [
+            "GET /v1/workspaces HTTP/1.1",
             "GET /v1/apps/hello/logs?after=end&events=true&follow=false HTTP/1.1",
             "POST /v1/apps/hello/deploys HTTP/1.1"
         ]
     );
+}
+
+fn personal_workspace() -> Reply {
+    reply(
+        json!({"workspaces":[{"id":ID,"namespace":"dev","title":"dev","kind":"personal","role":"owner","developer":true,"can_create":true,"active":true,"paid_developers":null}]}),
+    )
 }
 
 fn no_logs() -> Reply {
@@ -306,7 +316,7 @@ async fn a_background_deploy_names_the_app_and_has_no_url() {
     let app = app_dir(&dir, "ticker", WORKER_TOML);
     let mut done = operation("succeeded");
     done["url"] = Value::Null;
-    let server = Server::start(vec![no_logs(), started(done)]).await;
+    let server = Server::start(vec![personal_workspace(), no_logs(), started(done)]).await;
     let output = server
         .run(&["deploy", app.to_str().unwrap(), "--json"])
         .await;
@@ -324,7 +334,7 @@ async fn a_deploy_whose_address_doesnt_fit_its_kind_of_app_fails_as_our_bug() {
     let mut no_address = operation("succeeded");
     no_address["url"] = Value::Null;
     for (app, done) in [(web, no_address), (background, operation("succeeded"))] {
-        let server = Server::start(vec![no_logs(), started(done)]).await;
+        let server = Server::start(vec![personal_workspace(), no_logs(), started(done)]).await;
         let output = server
             .run(&["deploy", app.to_str().unwrap(), "--json"])
             .await;
