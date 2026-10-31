@@ -479,6 +479,18 @@ impl AppSpec {
         Ok(self.image.as_deref().map(ImageRef::parse).transpose()?)
     }
 
+    /// Whether the app sleeps: `sleep` as given, or left out, `Auto` for a web
+    /// app or static site and `Never` for a background app.
+    pub fn resolved_sleep(&self) -> Result<Sleep, SpecError> {
+        if let Some(sleep) = self.sleep {
+            return Ok(sleep);
+        }
+        Ok(match self.kind()? {
+            Kind::Web | Kind::Static => Sleep::Auto,
+            Kind::Worker => Sleep::Never,
+        })
+    }
+
     /// How long the app gets to start listening after it starts.
     pub fn start_timeout(&self) -> u32 {
         self.start_timeout.unwrap_or(DEFAULT_START_TIMEOUT)
@@ -1075,6 +1087,27 @@ start_timeout = 900
                 .unwrap()
                 .ends_with(r#""sleep":"never"}"#)
         );
+    }
+
+    #[test]
+    fn left_out_an_app_sleeps_unless_it_runs_in_the_background() {
+        let resolved = |text: &str| parse(text).unwrap().resolved_sleep().unwrap();
+        assert_eq!(resolved(HELLO), Sleep::Auto, "a web app");
+        assert_eq!(
+            resolved("title = \"Docs\"\nstatic = \"public\"\n"),
+            Sleep::Auto
+        );
+        assert_eq!(
+            resolved("title = \"Web\"\nimage = \"nginx:alpine\"\nport = 80\n"),
+            Sleep::Auto,
+            "an image app running its own command"
+        );
+        assert_eq!(resolved(TICKER), Sleep::Never, "a background app");
+        assert_eq!(
+            resolved(&format!("sleep = \"never\"\n{HELLO}")),
+            Sleep::Never
+        );
+        assert_eq!(resolved(&format!("sleep = \"auto\"\n{HELLO}")), Sleep::Auto);
     }
 
     #[test]

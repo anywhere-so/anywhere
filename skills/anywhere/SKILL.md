@@ -39,6 +39,8 @@ anywhere check path/to/app
 anywhere deploy path/to/app
 ```
 
+Web apps and static sites sleep when idle (`sleep = "auto"`, the default): about 30 seconds after the last request, WebSocket, exec or burst of work, nothing runs and only disk is charged, and the next request or `anywhere exec` wakes the app where it left off, usually in well under a second. Timers and background work pause while it sleeps, and outgoing connections close. Set top-level `sleep = "never"` for an app that must act when nobody is asking: chat bots, timers, cron libraries, reminders, polling, or work that carries on after a request ends. Workers never sleep. Read [sleep](references/building-apps.md#sleep) before choosing.
+
 Deploy overwrites uploaded paths and deletes nothing. Deleted or renamed local files remain remotely. There is no rollback: failed uploads/builds can leave changed files, and the platform attempts to restart using the disk as it stands. Check logs and repair; do not assume the old app survived unchanged.
 
 If a command returns an operation ID and then disconnects, inspect it with `anywhere operations get ID --wait` before repeating the change. `anywhere check` validates locally and, when signed in, also checks current plan ceilings. For structured command results use `--json`; `exec` keeps raw command streams, and `logs --follow` does not support JSON.

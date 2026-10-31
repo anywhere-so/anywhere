@@ -175,6 +175,11 @@ async fn follow(
     output: Output,
 ) -> Result<ResultData, CliError> {
     let kind = checked.app.spec.kind().map_err(CliError::AppToml)?;
+    let sleep = checked
+        .app
+        .spec
+        .resolved_sleep()
+        .map_err(CliError::AppToml)?;
     let image = checked.app.spec.image.as_deref();
     let waited = deploy_deadline(&checked.app.spec);
     let warning = operation.warning.clone();
@@ -214,6 +219,7 @@ async fn follow(
                 operation: operation.id,
                 app: app.to_string(),
                 url,
+                sleep,
                 warning,
             });
         }
@@ -287,6 +293,29 @@ mod tests {
         assert_eq!(
             deploy_deadline(&spec(&format!("start_timeout = 900\n{web}"))),
             proto::DEPLOY_FOLLOW + Duration::from_secs(870)
+        );
+    }
+
+    #[test]
+    fn a_deploy_ends_saying_the_app_sleeps_only_when_it_does() {
+        let note = |text: &str| {
+            let spec = appspec::parse(text).unwrap();
+            output::sleep_note(spec.resolved_sleep().unwrap())
+        };
+        let web = "title = \"Hi\"\n[processes]\nweb = \"./serve\"\n";
+        let line = "Sleeps when idle and wakes on the next request (`sleep = \"auto\"`). Timers and background work pause while it sleeps; use `sleep = \"never\"` if it must keep running.";
+        assert_eq!(note(web), Some(line), "a web app that doesn't say");
+        assert_eq!(note(&format!("sleep = \"auto\"\n{web}")), Some(line));
+        assert_eq!(
+            note("title = \"Docs\"\nstatic = \"public\"\n"),
+            Some(line),
+            "a static site"
+        );
+        assert_eq!(note(&format!("sleep = \"never\"\n{web}")), None);
+        assert_eq!(
+            note("title = \"Tick\"\n[processes]\nworker = \"./tick\"\n"),
+            None,
+            "a background app"
         );
     }
 }
