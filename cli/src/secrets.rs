@@ -69,6 +69,7 @@ pub async fn set(
         return Err(CliError::SecretRequestTooLarge { len });
     }
     let (control, _) = control::connect()?;
+    crate::workspaces::require_destination(app, &control, *output).await?;
     // Never retried here: each PUT is another change, which restarts the app again.
     let operation = control
         .client
@@ -114,6 +115,7 @@ pub async fn set_env_file(
         .collect();
     let what = format!("Setting {}", names.join(", "));
     let (control, _) = control::connect()?;
+    crate::workspaces::require_destination(app, &control, *output).await?;
     // Never retried here: each PATCH is another change, which restarts the app again.
     let operation = control
         .client
@@ -137,6 +139,7 @@ pub async fn unset(
     let target = target(app)?;
     let name = secret_name(name)?;
     let (control, _) = control::connect()?;
+    crate::workspaces::require_destination(app, &control, *output).await?;
     // Never retried here: once the first DELETE has worked, another finds no secret.
     let operation = control
         .client
@@ -153,11 +156,12 @@ pub async fn unset(
 }
 
 pub async fn list(app: Option<&str>, output: Output) -> Result<ResultData, CliError> {
-    let app = target(app)?.app;
+    let target = target(app)?.app;
     let (control, _) = control::connect()?;
+    crate::workspaces::require_destination(app, &control, output).await?;
     Ok(ResultData::Secrets(
         control
-            .secrets(&app, Instant::now() + API_TIMEOUT, output)
+            .secrets(&target, Instant::now() + API_TIMEOUT, output)
             .await?,
     ))
 }

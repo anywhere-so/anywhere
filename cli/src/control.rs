@@ -85,6 +85,15 @@ pub fn connect_streams() -> Result<Control, CliError> {
 }
 
 impl Control {
+    pub async fn workspaces(
+        &self,
+        deadline: Instant,
+        output: Output,
+    ) -> Result<control_api::WorkspaceList, CliError> {
+        self.read(deadline, output, || self.client.workspace_list())
+            .await
+    }
+
     pub async fn view(
         &self,
         id: Uuid,

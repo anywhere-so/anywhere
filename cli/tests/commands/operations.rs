@@ -278,7 +278,7 @@ async fn a_lost_deploy_reply_does_not_cause_a_second_post() {
     );
 }
 
-fn personal_workspace() -> Reply {
+pub(super) fn personal_workspace() -> Reply {
     reply(
         json!({"workspaces":[{"id":ID,"namespace":"dev","title":"dev","kind":"personal","role":"owner","developer":true,"can_create":true,"active":true,"paid_developers":null}]}),
     )

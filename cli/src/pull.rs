@@ -149,14 +149,13 @@ pub async fn pull(
     }
     stage.commit()?;
     output.progress(&format!("Pulled {files} files from {app} into {shown}"));
-    // In the folder, a plain deploy, `logs` or `secrets` names an app of your
-    // own, by the folder's name.
+    // Pulling files does not bind their destination for future commands.
     if app.owner.is_some() {
         let folder = shell_word(&shown);
         output.next(
             &format!("anywhere deploy {folder} --app {app}"),
             &format!(
-                "in {folder}, give `anywhere logs` and `anywhere secrets` --app {app} too; without it, they act on an app of your own named after the folder"
+                "in {folder}, give `anywhere logs` and `anywhere secrets` --app {app} too; this copy has no saved project binding until you deploy or explicitly bind it"
             ),
         );
     }

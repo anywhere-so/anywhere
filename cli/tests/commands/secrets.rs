@@ -218,19 +218,29 @@ async fn the_app_is_the_one_whose_folder_it_runs_in() {
     let app = dir.path().join("hello");
     std::fs::create_dir(&app).unwrap();
     std::fs::write(app.join("app.toml"), TOML).unwrap();
-    let server = Server::start(vec![reply(json!({"names": ["API_KEY"]}))]).await;
+    let server = Server::start(vec![
+        super::operations::personal_workspace(),
+        reply(json!({"names": ["API_KEY"]})),
+    ])
+    .await;
     let output = server
         .run_piped(&app, &["--json", "secrets", "list"], b"")
         .await;
     assert_eq!(success(&output), json!({"names": ["API_KEY"]}));
-    assert_eq!(server.paths(), ["GET /v1/apps/hello/secrets HTTP/1.1"]);
+    assert_eq!(
+        server.paths(),
+        [
+            "GET /v1/workspaces HTTP/1.1",
+            "GET /v1/apps/hello/secrets HTTP/1.1"
+        ]
+    );
 
     // A folder without an app.toml isn't an app's, so nothing is sent.
     let output = server
         .run_piped(dir.path(), &["--json", "secrets", "list"], b"")
         .await;
     failure(&output, "app_toml_missing");
-    assert_eq!(server.paths().len(), 1);
+    assert_eq!(server.paths().len(), 2);
 }
 
 #[tokio::test]
@@ -242,7 +252,12 @@ async fn a_secret_set_in_the_apps_folder_may_make_the_app_before_its_first_deplo
     let mut done = change("secret_set", "succeeded");
     done["warning"] = json!({"code": "app_not_deployed",
         "message": "the app hasn't been deployed yet, so it has no address"});
-    let server = Server::start(vec![accepted("secret_set"), reply(done.clone())]).await;
+    let server = Server::start(vec![
+        super::operations::personal_workspace(),
+        accepted("secret_set"),
+        reply(done.clone()),
+    ])
+    .await;
     let output = server
         .run_piped(
             &app,
@@ -252,7 +267,7 @@ async fn a_secret_set_in_the_apps_folder_may_make_the_app_before_its_first_deplo
         .await;
     assert_eq!(success(&output)["warning"]["code"], "app_not_deployed");
     assert_eq!(
-        server.paths()[0],
+        server.paths()[1],
         "PUT /v1/apps/hello/secrets/API_KEY HTTP/1.1"
     );
     assert_eq!(
@@ -261,7 +276,12 @@ async fn a_secret_set_in_the_apps_folder_may_make_the_app_before_its_first_deplo
     );
 
     // A person sees the warning too, beside the result.
-    let server = Server::start(vec![accepted("secret_set"), reply(done)]).await;
+    let server = Server::start(vec![
+        super::operations::personal_workspace(),
+        accepted("secret_set"),
+        reply(done),
+    ])
+    .await;
     let output = server
         .run_piped(&app, &["secrets", "set", "API_KEY"], VALUE.as_bytes())
         .await;
@@ -627,4 +647,48 @@ async fn a_developer_names_the_app_with_its_owner_and_never_makes_it() {
     );
     assert_eq!(error["retryable"], false);
     assert_eq!(server.paths().len(), 1);
+}
+
+#[tokio::test]
+async fn unbound_folder_commands_require_a_destination_when_teams_exist() {
+    let dir = tempfile::tempdir().unwrap();
+    let app = dir.path().join("reports");
+    std::fs::create_dir(&app).unwrap();
+    std::fs::write(app.join("app.toml"), TOML).unwrap();
+    std::fs::write(app.join(".env"), ENV_FILE).unwrap();
+    let mut workspaces = super::operations::personal_workspace();
+    workspaces.body["workspaces"]
+        .as_array_mut()
+        .unwrap()
+        .push(json!({
+            "id":"01999dd0-7f9a-7000-8000-000000000004", "namespace":"acme", "title":"Acme",
+            "kind":"team", "role":"member", "developer":true, "can_create":true,
+            "active":true, "paid_developers":1
+        }));
+    let server = Server::start(vec![workspaces]).await;
+    for args in [
+        vec!["--json", "secrets", "set", "API_KEY"],
+        vec!["--json", "secrets", "set", "--env-file", ".env"],
+        vec!["--json", "secrets", "unset", "API_KEY"],
+        vec!["--json", "secrets", "list"],
+        vec!["--json", "logs"],
+    ] {
+        let output = server.run_piped(&app, &args, VALUE.as_bytes()).await;
+        let error = failure(&output, "argument_invalid");
+        assert_eq!(output.status.code(), Some(2));
+        assert!(error["message"].as_str().unwrap().contains("--workspace"));
+        assert!(!text(&output.stderr).contains(VALUE.trim()));
+    }
+    assert_eq!(server.paths(), vec!["GET /v1/workspaces HTTP/1.1"; 5]);
+
+    std::fs::write(app.join(".env"), "bad secret line").unwrap();
+    let output = server
+        .run_piped(
+            &app,
+            &["--json", "secrets", "set", "--env-file", ".env"],
+            b"",
+        )
+        .await;
+    failure(&output, "env_file_invalid");
+    assert_eq!(server.paths().len(), 5);
 }

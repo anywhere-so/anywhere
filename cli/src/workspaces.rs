@@ -81,6 +81,31 @@ fn argument(detail: impl Into<String>) -> CliError {
         detail: detail.into(),
     }
 }
+
+/// Folder names alone cannot choose a payer when the person has team workspaces.
+/// Call after local validation, before reading or changing the inferred app.
+pub async fn require_destination(
+    app: Option<&str>,
+    control: &control::Control,
+    output: Output,
+) -> Result<(), CliError> {
+    if app.is_none()
+        && control
+            .workspaces(
+                tokio::time::Instant::now() + crate::settings::API_TIMEOUT,
+                output,
+            )
+            .await?
+            .workspaces
+            .len()
+            > 1
+    {
+        return Err(argument(
+            "choose a destination with --workspace NAMESPACE or --app WORKSPACE/APP, or bind this project with `anywhere workspaces bind WORKSPACE/APP`; `anywhere workspaces list` lists yours",
+        ));
+    }
+    Ok(())
+}
 fn data(value: impl Serialize) -> Result<ResultData, CliError> {
     serde_json::to_value(value)
         .map(ResultData::Workspace)

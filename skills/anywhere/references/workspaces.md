@@ -68,3 +68,5 @@ separate. A team developer pays nothing for app use; a workspace owner explicitl
 buys the team's seats, $10 per developer monthly, and top-ups in the portal's
 Usage & billing. One $10 runtime allowance belongs to the workspace regardless of
 seat count. No personal Pro subscription is needed. Billing links are browser-only.
+
+An unbound folder cannot choose a destination for logs or secrets when you belong to teams. Pass `--workspace NAMESPACE` or `--app WORKSPACE/APP`, or explicitly bind the project. Local input validation still happens before any request. A folder copied with `pull` is unbound until deployed or explicitly bound.
