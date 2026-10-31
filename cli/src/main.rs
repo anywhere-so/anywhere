@@ -451,6 +451,13 @@ async fn run(
         } | Command::Usage { app: None, .. }
     ) {
         let bound = binding::read(&app::working_dir()?)?;
+        if let (Some(selected), Some(bound)) = (workspace.as_deref(), bound.as_ref())
+            && selected != bound.workspace
+        {
+            return Err(CliError::Arguments {
+                detail: "--workspace conflicts with this project's binding; run outside the project or explicitly unbind it first".to_owned(),
+            });
+        }
         let selected = workspace
             .as_deref()
             .or_else(|| bound.as_ref().map(|binding| binding.workspace.as_str()));
