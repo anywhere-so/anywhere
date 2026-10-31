@@ -716,6 +716,8 @@ pub struct Warning {
 pub enum OperationKind {
     /// A workspace membership, invitation or access change, with its drain barrier.
     WorkspaceChange,
+    /// Renames an account and releases its old username after gateway drain.
+    AccountRename,
     /// Changes anonymous access and waits for the gateways to apply and drain it.
     AppAccess,
     /// Revocation: the gateways and the control plane stop serving the
