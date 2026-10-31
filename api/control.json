@@ -1606,6 +1606,29 @@
         ],
         "type": "object"
       },
+      "CliBuild": {
+        "description": "The CLI the platform serves for one target: what `anywhere update` compares its own executable with, and where it installs from. Every CLI that can update reads it, so it only ever gains fields.",
+        "properties": {
+          "blake3": {
+            "description": "The BLAKE3 hash of the build, as 64 lowercase hex digits. A CLI whose own executable hashes the same is the one the platform serves.",
+            "type": "string"
+          },
+          "platform": {
+            "description": "The platform's origin, such as `https://anywhere.so`, which serves `/install.sh` and the builds it installs.",
+            "type": "string"
+          },
+          "target": {
+            "description": "The target, such as `aarch64-apple-darwin`.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "blake3",
+          "platform",
+          "target"
+        ],
+        "type": "object"
+      },
       "Me": {
         "description": "Who's signed in, their plan and how much of it their apps use.",
         "properties": {
@@ -3307,6 +3330,50 @@
           }
         },
         "summary": "What an app used over a range, against its limits."
+      }
+    },
+    "/v1/cli/{target}": {
+      "get": {
+        "description": "compares itself with, and the platform that installs it.\n\nThe gateway answers it whatever contract the CLI says it was built for, so even a CLI it otherwise refuses with `cli_outdated` can update itself; its answer only ever gains fields. A target the platform has no build for is `no_such_cli`.",
+        "operationId": "cli_build_view",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "target",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CliBuild"
+                }
+              }
+            },
+            "description": "successful operation",
+            "headers": {
+              "cache-control": {
+                "required": true,
+                "schema": {
+                  "type": "string"
+                },
+                "style": "simple"
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "summary": "The CLI this platform serves for a target, which `anywhere update`"
       }
     },
     "/v1/me": {

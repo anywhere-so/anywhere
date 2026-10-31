@@ -9,6 +9,14 @@
 //! `skills` folder between agents. Paths are checked, then written: another
 //! program of the user's that swaps a folder for a link in between isn't
 //! guarded against.
+//!
+//! Every other command of a release's CLI keeps each copy that's there the
+//! CLI's own ([`sync`]): a copy that differs from what this CLI carries, as
+//! one an older or newer CLI wrote does, is written again. A build that's no
+//! release's doesn't, so a platform developer's builds and tests never write
+//! over the skill of the CLI they installed. Its `SKILL.md` names the CLI's
+//! version in its frontmatter's `metadata` (build.rs). A copy that isn't
+//! there, or is linked, is left alone.
 
 use std::env;
 use std::fs::{self, DirBuilder, File, OpenOptions, Permissions};
@@ -25,8 +33,12 @@ use crate::output::ResultData;
 // Generated from every regular Markdown file in the skill and references.
 include!(concat!(env!("OUT_DIR"), "/skill_bundle.rs"));
 
+/// The skill's entrypoint, as the CLI writes it.
 #[cfg(test)]
-const SKILL: &str = include_str!("../../skills/anywhere/SKILL.md");
+const SKILL: &str = match SKILL_FILES.last() {
+    Some((_, contents)) => contents,
+    None => "",
+};
 
 /// The skill's mode, and its folders', whatever the umask: anyone may read
 /// them, and only their owner change what an agent is told.
@@ -61,13 +73,75 @@ pub fn install() -> Result<ResultData, CliError> {
             what: "your home folder, under which Claude Code and Codex read skills",
         },
     )?;
-    // Claude Code keeps its settings there in place of ~/.claude when it's set.
-    let claude = absolute(
+    install_in(&targets(&home, &claude(&home)?)).map(|installed| ResultData::Skill {
+        installed,
+        version: env!("ANYWHERE_VERSION"),
+    })
+}
+
+/// Claude Code's folder: `CLAUDE_CONFIG_DIR`, where it keeps its settings in
+/// place of ~/.claude when it's set.
+fn claude(home: &Path) -> Result<PathBuf, CliError> {
+    Ok(absolute(
         "CLAUDE_CONFIG_DIR",
         "the folder Claude Code keeps its settings in, or unset it",
     )?
-    .unwrap_or_else(|| home.join(".claude"));
-    install_in(&targets(&home, &claude)).map(|installed| ResultData::Skill { installed })
+    .unwrap_or_else(|| home.join(".claude")))
+}
+
+/// Writes the skill again for each agent whose copy is there but isn't this
+/// CLI's, and returns those it wrote. Without a home folder there's no copy.
+pub fn sync() -> Result<Vec<Installed>, CliError> {
+    let Some(home) = absolute("HOME", "your home folder, under which Codex reads skills")? else {
+        return Ok(Vec::new());
+    };
+    sync_in(targets(&home, &claude(&home)?))
+}
+
+fn sync_in(targets: [Target; 2]) -> Result<Vec<Installed>, CliError> {
+    let mut out_of_date = Vec::new();
+    for target in targets {
+        if stale(&target.skills)? {
+            out_of_date.push(target);
+        }
+    }
+    if out_of_date.is_empty() {
+        return Ok(Vec::new());
+    }
+    install_in(&out_of_date)
+}
+
+/// Whether the copy in `skills` is there, not linked, and not this CLI's.
+fn stale(skills: &Path) -> Result<bool, CliError> {
+    let root = skills.join("anywhere");
+    for path in [&root, &root.join("SKILL.md")] {
+        match fs::symlink_metadata(path) {
+            // A platform developer's link to their checkout, kept as theirs.
+            Ok(metadata) if metadata.file_type().is_symlink() => return Ok(false),
+            Ok(_) => {}
+            Err(error) if error.kind() == io::ErrorKind::NotFound => return Ok(false),
+            Err(error) => {
+                return Err(unwritable(path, &format!("it can't be read ({error})")));
+            }
+        }
+    }
+    // A link further in is the developer's too, which installing refuses.
+    match check(skills) {
+        Err(CliError::SkillLinked { .. }) => return Ok(false),
+        checked => checked?,
+    }
+    for (name, contents) in SKILL_FILES {
+        let path = root.join(name);
+        match fs::read(&path) {
+            Ok(installed) if installed == contents.as_bytes() => {}
+            Ok(_) => return Ok(true),
+            Err(error) if error.kind() == io::ErrorKind::NotFound => return Ok(true),
+            Err(error) => {
+                return Err(unwritable(&path, &format!("it can't be read ({error})")));
+            }
+        }
+    }
+    Ok(false)
 }
 
 /// The absolute path the environment variable `name` holds, if it's set.
@@ -298,6 +372,103 @@ mod tests {
 
     fn mode(path: &Path) -> u32 {
         fs::symlink_metadata(path).unwrap().permissions().mode() & 0o777
+    }
+
+    fn sync_at(home: &Path) -> Result<Vec<Installed>, CliError> {
+        sync_in(targets(home, &home.join(".claude")))
+    }
+
+    /// A release's CLI writes the skill again wherever it's installed but
+    /// isn't its own, and nowhere else.
+    #[test]
+    fn sync_writes_again_only_an_installed_unlinked_copy_that_isnt_the_clis() {
+        let home = tempfile::tempdir().unwrap();
+        let home = home.path();
+        // Nothing installed: nothing written.
+        assert!(sync_at(home).unwrap().is_empty());
+        assert!(!home.join(".claude").exists() && !home.join(".agents").exists());
+        // Claude Code's is an older one, Codex has none.
+        let claude = skill_at(home, ".claude/skills");
+        fs::create_dir_all(claude.parent().unwrap()).unwrap();
+        fs::write(&claude, OLD).unwrap();
+        fs::write(claude.with_file_name("notes.md"), "mine").unwrap();
+        let written = sync_at(home).unwrap();
+        assert_eq!(written.len(), 1);
+        assert_eq!(written[0].agent, "claude-code");
+        assert_eq!(fs::read_to_string(&claude).unwrap(), SKILL);
+        for (name, contents) in SKILL_FILES {
+            assert_eq!(
+                fs::read_to_string(claude.with_file_name(name)).unwrap(),
+                *contents
+            );
+        }
+        assert_eq!(
+            fs::read_to_string(claude.with_file_name("notes.md")).unwrap(),
+            "mine"
+        );
+        assert!(!home.join(".agents").exists());
+        // Once it's the CLI's, nothing more; a reference changed or gone is
+        // written again.
+        assert!(sync_at(home).unwrap().is_empty());
+        let reference = claude.with_file_name("references/setup.md");
+        fs::remove_file(&reference).unwrap();
+        assert_eq!(sync_at(home).unwrap().len(), 1);
+        assert!(reference.exists());
+
+        // A linked copy is a platform developer's, and stays theirs.
+        let home = tempfile::tempdir().unwrap();
+        let home = home.path();
+        let checkout = home.join("checkout/anywhere");
+        fs::create_dir_all(&checkout).unwrap();
+        fs::write(checkout.join("SKILL.md"), OLD).unwrap();
+        fs::create_dir_all(home.join(".agents/skills")).unwrap();
+        symlink(&checkout, home.join(".agents/skills/anywhere")).unwrap();
+        let theirs = home.join("theirs.md");
+        fs::write(&theirs, OLD).unwrap();
+        fs::create_dir_all(home.join(".claude/skills/anywhere")).unwrap();
+        symlink(&theirs, skill_at(home, ".claude/skills")).unwrap();
+        assert!(sync_at(home).unwrap().is_empty());
+        assert_eq!(fs::read_to_string(checkout.join("SKILL.md")).unwrap(), OLD);
+        assert_eq!(fs::read_to_string(&theirs).unwrap(), OLD);
+        // And so is one whose reference is linked.
+        let home = tempfile::tempdir().unwrap();
+        let home = home.path();
+        let claude = skill_at(home, ".claude/skills");
+        fs::create_dir_all(claude.with_file_name("references")).unwrap();
+        fs::write(&claude, OLD).unwrap();
+        symlink(&theirs, claude.with_file_name("references/setup.md")).unwrap();
+        assert!(sync_at(home).unwrap().is_empty());
+        assert_eq!(fs::read_to_string(&claude).unwrap(), OLD);
+
+        // One that can't be written again says why.
+        let home = tempfile::tempdir().unwrap();
+        let home = home.path();
+        let codex = skill_at(home, ".agents/skills");
+        fs::create_dir_all(codex.with_file_name("references")).unwrap();
+        fs::write(&codex, OLD).unwrap();
+        fs::set_permissions(
+            codex.with_file_name("references"),
+            Permissions::from_mode(0o555),
+        )
+        .unwrap();
+        let error = sync_at(home).unwrap_err();
+        fs::set_permissions(
+            codex.with_file_name("references"),
+            Permissions::from_mode(0o755),
+        )
+        .unwrap();
+        assert_eq!(error.code(), "skill_write_failed");
+    }
+
+    #[test]
+    fn the_skill_carried_names_the_cli_it_belongs_to() {
+        assert!(
+            SKILL.contains(&format!(
+                "\nmetadata:\n  version: \"{}\"\n---\n",
+                env!("ANYWHERE_VERSION")
+            )),
+            "{SKILL:.400}"
+        );
     }
 
     #[test]

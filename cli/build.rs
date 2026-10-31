@@ -6,8 +6,13 @@ use std::error::Error;
 use std::path::Path;
 
 fn main() -> Result<(), Box<dyn Error>> {
-    stamp_version()?;
-    bundle_skill()?;
+    let version = stamp_version()?;
+    // The target, for `anywhere update` to ask for the platform's build of it.
+    println!(
+        "cargo::rustc-env=ANYWHERE_TARGET={}",
+        std::env::var("TARGET")?
+    );
+    bundle_skill(&version)?;
     let spec_path = Path::new(env!("CARGO_MANIFEST_DIR")).join("../api/control.json");
     println!("cargo::rerun-if-changed={}", spec_path.display());
     let spec: openapiv3::OpenAPI = serde_json::from_slice(&std::fs::read(&spec_path)?)?;
@@ -69,6 +74,8 @@ fn main() -> Result<(), Box<dyn Error>> {
             std::iter::empty(),
         )
         .with_replacement("PullBundle", "control_api::PullBundle", std::iter::empty())
+        // What `anywhere update` reads, which every CLI that updates must.
+        .with_replacement("CliBuild", "control_api::CliBuild", std::iter::empty())
         // The plan, which `anywhere check` holds the app to with the control
         // plane's own rules (`control_api::plans`).
         .with_replacement("Plan", "control_api::Plan", std::iter::empty())
@@ -128,7 +135,7 @@ fn main() -> Result<(), Box<dyn Error>> {
 /// `ANYWHERE_SOURCE_REVISION`, the commit it's built from, which the release
 /// bundle's builds set, so one release's CLI tells itself apart from
 /// another's. A revision that isn't a full commit ID stops the build.
-fn stamp_version() -> Result<(), Box<dyn Error>> {
+fn stamp_version() -> Result<String, Box<dyn Error>> {
     println!("cargo::rerun-if-env-changed=ANYWHERE_SOURCE_REVISION");
     let package = env!("CARGO_PKG_VERSION");
     let version = match std::env::var("ANYWHERE_SOURCE_REVISION") {
@@ -150,11 +157,13 @@ fn stamp_version() -> Result<(), Box<dyn Error>> {
         Err(error) => return Err(format!("ANYWHERE_SOURCE_REVISION: {error}").into()),
     };
     println!("cargo::rustc-env=ANYWHERE_VERSION={version}");
-    Ok(())
+    Ok(version)
 }
 
 /// Embed the complete Markdown bundle; watch directories so added/removed references rebuild.
-fn bundle_skill() -> Result<(), Box<dyn Error>> {
+/// SKILL.md says, in its frontmatter's `metadata`, the version of the CLI that
+/// carries it, so an agent can tell which it has, and the CLI when to replace it.
+fn bundle_skill(version: &str) -> Result<(), Box<dyn Error>> {
     let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../skills/anywhere");
     let mut files = Vec::new();
     skill_files(&root, &root, &mut files)?;
@@ -166,6 +175,11 @@ fn bundle_skill() -> Result<(), Box<dyn Error>> {
     let mut generated = String::from("const SKILL_FILES: &[(&str, &str)] = &[\n");
     for name in files {
         let path = root.join(&name);
+        if name == "SKILL.md" {
+            let stamped = stamp_skill(&std::fs::read_to_string(&path)?, version)?;
+            generated.push_str(&format!("({name:?}, {stamped:?}),\n"));
+            continue;
+        }
         let path = path.to_str().ok_or("the skill path must be UTF-8")?;
         generated.push_str(&format!("({name:?}, include_str!({path:?})),\n"));
     }
@@ -175,6 +189,32 @@ fn bundle_skill() -> Result<(), Box<dyn Error>> {
         generated,
     )?;
     Ok(())
+}
+
+/// `skill` with `metadata:` and its `version: "<version>"` at the end of its
+/// frontmatter, which must have no `metadata` of its own.
+fn stamp_skill(skill: &str, version: &str) -> Result<String, Box<dyn Error>> {
+    let rest = skill
+        .strip_prefix("---\n")
+        .ok_or("SKILL.md must start with its frontmatter, `---`")?;
+    let end = rest
+        .find("\n---\n")
+        .ok_or("SKILL.md's frontmatter must end with a `---` line")?;
+    let frontmatter = &rest[..end + 1];
+    if frontmatter
+        .lines()
+        .any(|line| line.starts_with("metadata:"))
+    {
+        return Err(
+            "SKILL.md's frontmatter must not have `metadata`, which the build writes".into(),
+        );
+    }
+    let at = 4 + end + 1;
+    Ok(format!(
+        "{}metadata:\n  version: \"{version}\"\n{}",
+        &skill[..at],
+        &skill[at..]
+    ))
 }
 
 fn skill_files(root: &Path, folder: &Path, files: &mut Vec<String>) -> Result<(), Box<dyn Error>> {

@@ -120,6 +120,17 @@ impl Control {
         self.read(deadline, output, || self.client.me_view()).await
     }
 
+    /// The CLI the platform serves for `target`.
+    pub async fn cli_build(
+        &self,
+        target: &str,
+        deadline: Instant,
+        output: Output,
+    ) -> Result<control_api::CliBuild, CliError> {
+        self.read(deadline, output, || self.client.cli_build_view(target))
+            .await
+    }
+
     pub async fn inspect(
         &self,
         app: &AppRef,
