@@ -8,7 +8,7 @@ For an existing app, run `anywhere apps inspect NAME` before editing or deployin
 
 ```sh
 anywhere apps inspect alice/wiki
-anywhere check ~/.anywhere/apps/alice/wiki
+anywhere check ~/.anywhere/apps/alice/wiki --app alice/wiki
 anywhere deploy ~/.anywhere/apps/alice/wiki --app alice/wiki
 ```
 
