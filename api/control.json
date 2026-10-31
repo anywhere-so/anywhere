@@ -346,6 +346,13 @@
             "type": "string"
           },
           {
+            "description": "Renames an account and releases its old username after gateway drain.",
+            "enum": [
+              "account_rename"
+            ],
+            "type": "string"
+          },
+          {
             "description": "Changes anonymous access and waits for the gateways to apply and drain it.",
             "enum": [
               "app_access"
@@ -2048,7 +2055,7 @@
     }
   },
   "info": {
-    "description": "Contract 5. The `anywhere` CLI says so in every request's User-Agent, `anywhere/<version> (contract 5)`, and the gateway refuses a CLI built for another contract, or one from before them (`anywhere/<version>` alone), with 400 `cli_outdated` before the request reaches this API, whatever its route or body. Its message says how to install the CLI this platform serves. Other clients are told nothing.",
+    "description": "Contract 6. The `anywhere` CLI says so in every request's User-Agent, `anywhere/<version> (contract 6)`, and the gateway refuses a CLI built for another contract, or one from before them (`anywhere/<version>` alone), with 400 `cli_outdated` before the request reaches this API, whatever its route or body. Its message says how to install the CLI this platform serves. Other clients are told nothing.",
     "title": "Control API",
     "version": "0.1.0"
   },

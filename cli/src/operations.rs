@@ -53,7 +53,8 @@ pub fn longest(kind: &OperationKind) -> Duration {
     match kind {
         OperationKind::Deploy => crate::deploy::follow_for(appspec::MAX_START_TIMEOUT),
         OperationKind::SecretSet | OperationKind::SecretUnset => crate::secrets::CHANGE_DEADLINE,
-        OperationKind::AppAccess
+        OperationKind::AccountRename
+        | OperationKind::AppAccess
         | OperationKind::ShareAdd
         | OperationKind::ShareRemove
         | OperationKind::ShareChange
@@ -158,6 +159,12 @@ pub fn check_failed(operation: &Operation) -> Result<(), CliError> {
             (None, OperationKind::Deploy) => CliError::DeployFailedSilently {
                 operation: operation.id,
             },
+            (None, OperationKind::AccountRename) => CliError::OperationFailed(crate::api::types::ErrorBody {
+                diagnostic: None,
+                code: "rename_failed_without_reason".to_owned(),
+                message: "the rename failed without a recorded reason; keep its operation ID and ask the operator".to_owned(),
+                retryable: false,
+            }),
             (None, OperationKind::AppAccess) => CliError::OperationFailed(crate::api::types::ErrorBody {
                 code: "app_access_failed_without_reason".to_owned(),
                 diagnostic: None,
