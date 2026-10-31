@@ -2669,7 +2669,32 @@
                 }
               }
             },
-            "description": "successfully enqueued operation"
+            "description": "successfully enqueued operation",
+            "headers": {
+              "app-id": {
+                "required": true,
+                "schema": {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                "style": "simple"
+              },
+              "workspace-id": {
+                "required": true,
+                "schema": {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                "style": "simple"
+              },
+              "workspace-namespace": {
+                "required": true,
+                "schema": {
+                  "type": "string"
+                },
+                "style": "simple"
+              }
+            }
           },
           "4XX": {
             "$ref": "#/components/responses/Error"

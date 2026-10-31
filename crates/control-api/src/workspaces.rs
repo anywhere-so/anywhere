@@ -213,3 +213,15 @@ pub struct ProjectBinding {
     pub app_id: Uuid,
     pub app: String,
 }
+
+/// Stable app identity captured by the deploy's transaction, before its name
+/// can ever be reused. IDs are response headers, not mutable client context.
+#[derive(Clone, Debug, Serialize, JsonSchema)]
+pub struct AppIdentityHeaders {
+    #[serde(rename = "app-id")]
+    pub app_id: Uuid,
+    #[serde(rename = "workspace-id")]
+    pub workspace_id: Uuid,
+    #[serde(rename = "workspace-namespace")]
+    pub workspace_namespace: String,
+}

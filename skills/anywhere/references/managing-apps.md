@@ -37,7 +37,7 @@ Add waits for access to take effect and prints the URL. Give that link to the us
 
 ## Apps shared with the user
 
-`anywhere apps list` and the portal's "Shared with me" show `OWNER/NAME` and the role. A bare name always targets the user's own app, even if it contains the owner's name.
+`anywhere apps list` and the portal's "Shared with me" show `OWNER/NAME` and the role. In an unbound folder, a bare name targets the personal workspace. A bound folder uses its saved workspace and app IDs; conflicting names fail. Read [workspaces](workspaces.md) for team access.
 
 ```sh
 anywhere pull alice/wiki /app ./wiki
@@ -47,7 +47,7 @@ anywhere exec alice/wiki -- ls
 anywhere apps inspect alice/wiki
 ```
 
-Preserve `OWNER/NAME` in deploy, pull, exec, inspect, logs and secrets. Pull prints the qualified redeploy command. Without `--app alice/wiki`, deploying `wiki` creates/updates the user's own `wiki`, and folder-inferred logs/secrets also target their own app.
+Preserve `OWNER/NAME` in deploy, pull, exec, inspect, logs and secrets. Pull prints the qualified redeploy command. A successful folder deploy binds its destination. Keep that binding for later deploys, logs and secrets. An unbound folder with multiple available workspaces needs an explicit destination.
 
 `member_only` means use is allowed but changes require developer access. `no_such_app` means check the shared list/target. `not_a_developer`, `upload_access_ended` or `deploy_access_ended` means access ended: stop and ask the owner. Interrupted exec/pull/log streams can also mean expiry or access removal; a new read identifies the cause.
 

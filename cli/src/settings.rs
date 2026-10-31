@@ -80,6 +80,12 @@ impl Settings {
     }
 
     pub fn clients_at(&self, dir: &Path) -> Result<Clients, CliError> {
+        self.clients_for(Some(dir))
+    }
+    pub fn clients_unbound(&self) -> Result<Clients, CliError> {
+        self.clients_for(None)
+    }
+    fn clients_for(&self, dir: Option<&Path>) -> Result<Clients, CliError> {
         let mut token = HeaderValue::from_str(&format!("Bearer {}", self.token)).map_err(|_| {
             CliError::SettingInvalid {
                 name: "ANYWHERE_TOKEN",
@@ -89,7 +95,9 @@ impl Settings {
         token.set_sensitive(true);
         let mut headers = HeaderMap::new();
         headers.insert(AUTHORIZATION, token.clone());
-        crate::binding::headers(&mut headers, &self.api, dir)?;
+        if let Some(dir) = dir {
+            crate::binding::headers(&mut headers, &self.api, dir)?;
+        }
         let api = self
             .client()
             .default_headers(headers.clone())

@@ -38,6 +38,16 @@ pub fn connect_at(
     ))
 }
 
+/// Explicit binding is the one operation that may select a replacement identity.
+pub fn connect_unbound() -> Result<Control, CliError> {
+    let settings = Settings::from_env()?;
+    let clients = settings.clients_unbound()?;
+    Ok(Control {
+        client: api::Client::new_with_client(&settings.api, clients.api),
+        api: settings.api,
+    })
+}
+
 pub fn connect() -> Result<(Control, crate::settings::UploadClient), CliError> {
     with(Settings::from_env()?)
 }

@@ -15,6 +15,13 @@ use uuid::Uuid;
 #[derive(Debug, Subcommand)]
 pub enum Command {
     List,
+    Show {
+        workspace: String,
+    },
+    Sharing {
+        workspace: String,
+        app: String,
+    },
     Create {
         namespace: String,
         #[arg(long)]
@@ -54,8 +61,13 @@ pub enum Command {
         workspace: String,
         app: String,
         user: Uuid,
-        #[arg(long)]
-        role: Option<String>,
+        #[arg(long, required = true)]
+        role: String,
+    },
+    RevokeGrant {
+        workspace: String,
+        app: String,
+        user: Uuid,
     },
     Visibility {
         workspace: String,
@@ -92,6 +104,14 @@ pub async fn run(command: Command, output: &mut Output) -> Result<ResultData, Cl
     }
     let operation = match command {
         Command::List => return data(request!(control.client.workspace_list())),
+        Command::Show { workspace } => {
+            return data(request!(control.client.workspace_view(&workspace)));
+        }
+        Command::Sharing { workspace, app } => {
+            return data(request!(
+                control.client.workspace_app_sharing(&workspace, &app)
+            ));
+        }
         Command::Create { namespace, title } => request!(
             control
                 .client
@@ -132,30 +152,28 @@ pub async fn run(command: Command, output: &mut Output) -> Result<ResultData, Cl
             app,
             user,
             role,
-        } => match role.as_deref() {
-            Some(role) => {
-                let role = match role {
-                    "member" => ShareRole::Member,
-                    "developer" => ShareRole::Developer,
-                    _ => {
-                        return Err(argument(
-                            "--role must be member or developer; omit it to remove the direct grant",
-                        ));
-                    }
-                };
-                request!(control.client.workspace_app_grant(
-                    &workspace,
-                    &app,
-                    &user,
-                    &control_api::WorkspaceAppGrantUpdate { role }
-                ))
-            }
-            None => request!(
-                control
-                    .client
-                    .workspace_app_ungrant(&workspace, &app, &user)
-            ),
-        },
+        } => {
+            let role = match role.as_str() {
+                "member" => ShareRole::Member,
+                "developer" => ShareRole::Developer,
+                _ => return Err(argument("--role must be member or developer")),
+            };
+            request!(control.client.workspace_app_grant(
+                &workspace,
+                &app,
+                &user,
+                &control_api::WorkspaceAppGrantUpdate { role }
+            ))
+        }
+        Command::RevokeGrant {
+            workspace,
+            app,
+            user,
+        } => request!(
+            control
+                .client
+                .workspace_app_ungrant(&workspace, &app, &user)
+        ),
         Command::Visibility {
             workspace,
             app,
@@ -179,7 +197,7 @@ pub async fn bind(
     replace: bool,
     _output: Output,
 ) -> Result<ResultData, CliError> {
-    let (control, _) = control::connect()?;
+    let control = control::connect_unbound()?;
     let found = control
         .client
         .app_identity(app.name.as_str(), app.owner())
@@ -203,10 +221,92 @@ pub async fn scope(
     workspace: Option<&str>,
     output: Output,
 ) -> Result<(), CliError> {
-    use crate::{Apps, Command as C, Secrets};
+    use crate::{Apps, Command as C, Secrets, Shares};
     let cwd = app::working_dir()?;
+    if let C::Workspaces { command } = command {
+        if let Some(selected) = workspace {
+            naming::Username::parse(selected)
+                .map_err(|source| CliError::QualifiedName { source })?;
+            match command {
+                Command::List => {
+                    *command = Command::Show {
+                        workspace: selected.to_owned(),
+                    }
+                }
+                Command::Bind { app, .. } => {
+                    let mut target = AppRef::parse(app)?;
+                    if target.owner().is_some_and(|owner| owner != selected) {
+                        return Err(argument("--workspace conflicts with the app to bind"));
+                    }
+                    target.owner = Some(
+                        naming::Username::parse(selected)
+                            .map_err(|source| CliError::QualifiedName { source })?,
+                    );
+                    *app = target.to_string();
+                }
+                Command::Create { namespace, .. } if namespace != selected => {
+                    return Err(argument("--workspace conflicts with the new namespace"));
+                }
+                Command::Show { workspace }
+                | Command::Members { workspace }
+                | Command::Invite { workspace, .. }
+                | Command::Remove { workspace, .. }
+                | Command::Set { workspace, .. }
+                | Command::Grant { workspace, .. }
+                | Command::RevokeGrant { workspace, .. }
+                | Command::Visibility { workspace, .. }
+                | Command::Sharing { workspace, .. }
+                    if workspace != selected =>
+                {
+                    return Err(argument(
+                        "--workspace conflicts with the workspace named by this command",
+                    ));
+                }
+                _ => {}
+            }
+        }
+        return Ok(());
+    }
+
     let choose = matches!(command, C::Deploy { .. });
     let (dir, target): (&Path, &mut Option<String>) = match command {
+        C::Apps {
+            command: Apps::Access { name, .. },
+        }
+        | C::Shares {
+            command:
+                Shares::List { app: name }
+                | Shares::Add { app: name, .. }
+                | Shares::Remove { app: name, .. },
+        } => {
+            if workspace.is_none() && binding::read(&cwd)?.is_none() {
+                return Ok(());
+            }
+            let mut target = Some(name.clone());
+            resolve(&cwd, &mut target, workspace, false, output).await?;
+            let target = AppRef::parse(
+                target
+                    .as_deref()
+                    .ok_or_else(|| argument("an app selector is required"))?,
+            )?;
+            if let Some(owner) = target.owner() {
+                let (control, _) = control::connect()?;
+                let me = control
+                    .client
+                    .me_view()
+                    .await
+                    .map_err(|e| control.error(e))?
+                    .into_inner();
+                if me.username != owner {
+                    return Err(argument(format!(
+                        "use `anywhere workspaces sharing {owner} {}` and `anywhere workspaces grant` for team app access; team-wide visibility uses `anywhere workspaces visibility`",
+                        target.name
+                    )));
+                }
+            }
+            *name = target.name.to_string();
+            return Ok(());
+        }
         C::Deploy { dir, app } | C::Check { dir, app } => (dir, app),
         C::Logs { target, .. }
         | C::Secrets {

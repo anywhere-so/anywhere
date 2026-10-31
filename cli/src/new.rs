@@ -30,11 +30,11 @@ pub async fn new(name: &str, output: &mut Output) -> Result<ResultData, CliError
             .await
             .map_err(|e| control.error(e))?
             .into_inner();
-        if !workspaces.workspaces.iter().any(|workspace| {
-            workspace.namespace == owner
-                && workspace.kind == control_api::WorkspaceKind::Team
-                && workspace.can_create
-        }) {
+        if !workspaces
+            .workspaces
+            .iter()
+            .any(|workspace| workspace.namespace == owner && workspace.can_create)
+        {
             return Err(CliError::NewWorkspace {
                 workspace: owner.to_owned(),
             });
