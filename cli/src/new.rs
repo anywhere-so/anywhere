@@ -60,11 +60,12 @@ pub async fn new(name: &str, output: &mut Output) -> Result<ResultData, CliError
         },
         true,
     )?;
+    let target = selected.to_string();
     let result = deploy::run(&control, &uploads, selected, &checked, output).await?;
     output.next(
-        &format!("anywhere exec {name} -- <command>"),
+        &format!("anywhere exec {target} -- <command>"),
         &format!(
-            "{name} has no web address; to serve one, deploy a folder whose app.toml gives web = \"...\" with `anywhere deploy DIR --app {name}`, and what you made in it stays"
+            "{name} has no web address; to serve one, deploy a folder whose app.toml gives web = \"...\" with `anywhere deploy DIR --app {target}`, and what you made in it stays"
         ),
     );
     Ok(result)
