@@ -1,5 +1,38 @@
 # Building apps
 
+## Standards for Anywhere apps
+
+Design software to fit a persistent Linux sandbox with built-in sign-in:
+
+- **Where to create the folder:** Use `.` if `./app.toml` already exists; `.anywhere/apps/<app>` when the app belongs with the current project repository (add `.anywhere/` to the repo's `.gitignore` unless the user wants the app committed); or `~/.anywhere/apps/<app>` by default for personal and image apps (`<owner>/<app>` for shared apps).
+- **Separate code (`/app`) from live state (`/app/data/`):** Deploy overwrites every uploaded path in `/app` and deletes nothing. Put SQLite databases, uploads and mutable files in `./data/` (created at startup with `mkdir -p`, or in `/var/lib/<app>/`), and list `/data/`, `*.db*`, `node_modules/` and `.venv/` in `.gitignore`. Initialize schema on startup (`CREATE TABLE IF NOT EXISTS`); never track a local `.db` file in the uploaded folder.
+- **SQLite settings for persistent sandboxes:** Open SQLite with `PRAGMA journal_mode = WAL; PRAGMA synchronous = FULL; PRAGMA busy_timeout = 5000;` so acknowledged writes survive restarts or power cuts and concurrent requests do not fail with `SQLITE_BUSY`.
+- **Use Anywhere identity instead of custom login:** Do not scaffold login forms, passwords or session stores unless requested. Key accounts and permissions on `Anywhere-User-ID` (permanent UUID), display `Anywhere-User`, and check `Anywhere-Role` (`owner`, `developer`, `member`, or `anonymous` when public); expose a small `/api/me` route if the frontend needs the current user, and link to `/_anywhere/login` if a public app offers sign-in.
+- **Run production processes, not dev servers:** Start with `node server.js` or `.venv/bin/python app.py` bound to `0.0.0.0:$PORT`. Avoid `npm start` (keeps an extra `npm` process in memory) and never run file-watching dev servers (`npm run dev`, `vite`, `nodemon`, `uvicorn --reload`), which waste RAM and hit sandbox memory limits.
+- **Include an icon and clear logs:** Add a 512×512 PNG at `assets/icon.png` (`icon = "assets/icon.png"` in `app.toml`) so the app has a portal icon and `/favicon.ico` fallback. Log startup and unhandled errors to stdout/stderr (never secrets) so `anywhere logs` is immediately useful.
+
+```text
+~/.anywhere/apps/notes/      # or .anywhere/apps/notes/
+├── app.toml
+├── .gitignore               # node_modules/, .venv/, /data/, *.db*, .env*
+├── assets/
+│   └── icon.png             # 512x512 non-animated PNG (<= 1 MiB)
+├── server.js                # or app.py
+└── data/                    # created at startup, excluded by .gitignore
+```
+
+## Web UI and UX standards
+
+Many people open and share Anywhere apps on their phones as well as laptops. Read [UI and web design](ui-and-design.md) whenever creating or updating a web app or static site so the interface is mobile-ready, tactile and accessible on the first deploy:
+
+- **Mobile-first, responsive layout (375px to desktop):** Include `<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">` (never disable zoom with `maximum-scale=1` or `user-scalable=no`). Design for a `375px` phone viewport first and scale up with fluid grids (`repeat(auto-fit, minmax(min(100%, 280px), 1fr))`) or `@media (min-width: 768px)`. Never cause horizontal page scroll: collapse desktop sidebars and multi-button toolbars into a compact header, drawer (`overscroll-behavior: contain`) or bottom bar on narrow screens, and wrap wide tables in `overflow-x: auto` containers or stack rows as cards. Use `100dvh` instead of `100vh` so mobile browser chrome never clips bottom controls, pad fixed bars with `env(safe-area-inset-bottom)` / `env(safe-area-inset-top)`, and set `font-size: 16px` (`1rem`) or larger on all `<input>`, `<textarea>` and `<select>` elements so iOS Safari does not auto-zoom on focus. Never hide edit/delete actions behind `:hover` alone—touch screens have no hover.
+- **Zero overflow, zero layout shift, and all 4 data states:** Put `min-width: 0` on flex children, `minmax(0, 1fr)` on grid tracks, and `overflow-wrap: anywhere` on user text/URLs/IDs so long strings never break the layout. Cap modals/drawers (`max-height: calc(100dvh - 2rem)`) with internal `overflow-y: auto` so action buttons never get pushed off-screen. Set `scrollbar-gutter: stable`, keep button widths stable during `"Saving…"`, and reserve dimensions (`aspect-ratio` or `min-height`) for images/charts. Embed initial data on first paint when possible, or use geometry-matched skeletons (`0px` jump when data arrives) and keep existing rows visible while filtering/searching. Always build all 4 view states: **Loading** (skeleton), **Empty data** (explanation + primary create CTA), **Empty filter/search** (`"Clear filters"` button), and **Error** (message + `"Retry"` button).
+- **One clear focal point and progressive disclosure:** Give every screen a single primary visual entry point. Do not make sidebars, stat cards, toolbars and tables compete at equal weight. Keep secondary controls in drawers, menus or expandable sections rather than crowding the main view.
+- **Surfaces, concentric radii and subtle depth:** Stick to one neutral surface palette and one semantic accent color. Set `color-scheme` on `<html>` and `<meta name="theme-color">` to match the page background. When nesting rounded elements within `24px` of padding, calculate `outerRadius = innerRadius + padding` (for example `16px` outer card with `8px` padding and `8px` inner button). Prefer layered transparent `box-shadow` (`0 0 0 1px rgba(0,0,0,0.06), 0 1px 2px -1px rgba(0,0,0,0.06), 0 2px 4px rgba(0,0,0,0.04)` in light mode; `0 0 0 1px rgba(255,255,255,0.08)` in dark mode) for card/button elevation, and keep `1px` borders for dividers. Give images an inset `1px` neutral outline (`rgba(0,0,0,0.1)` light, `rgba(255,255,255,0.1)` dark) and explicit `width`/`height`.
+- **Typography and content resilience:** Apply `-webkit-font-smoothing: antialiased` on `html`, `text-wrap: balance` on headings (`h1`–`h3`), and `text-wrap: pretty` on body copy and descriptions. Use `font-variant-numeric: tabular-nums` on counters, prices, timestamps and numeric columns so digits align without layout shift. Set `min-width: 0` on flex/grid children and truncate or wrap long user strings, filenames and URLs so they never break the layout.
+- **Tactile, interruptible interactions:** Use CSS `transition` on explicit compositor properties (`transform`, `opacity`, `box-shadow`—never `transition: all`) so state changes can be interrupted mid-animation. Add subtle press feedback (`transform: scale(0.96)` on `:active`) to buttons, gate hover styles behind `@media (hover: hover)`, optically center asymmetric icons, and respect `@media (prefers-reduced-motion: reduce)`.
+- **Accessible controls, forms and URL state:** Use `<button>` for actions and `<a href>` for navigation (never `<div onClick>`), with at least a `44×44px` touch target (`touch-action: manipulation`), `:focus-visible` rings (never `outline: none` without a replacement), and `aria-label` on icon-only buttons. Avoid `autoFocus` on mobile so the virtual keyboard does not cover the screen on load. Pair every form input with a `<label>`, proper `type`/`inputmode`/`autocomplete`, inline validation errors, and a pending label (`"Saving…"`) during requests; never block paste. Require confirmation or undo for destructive actions, and reflect active tabs, filters or search queries in the URL so shared Anywhere links open the same state.
+
 ## app.toml
 
 The folder name is the app name unless `deploy --app` overrides it: lowercase letters, digits and hyphens, starting/ending with a letter or digit. The combined `<username>-<app>` must fit a 63-character DNS label. Always use the URL returned by the CLI.
@@ -107,7 +140,19 @@ For restricted access, Anywhere authenticates the owner and shared members/devel
 - `Anywhere-User`: editable username for display. A rename changes this label and app URLs, while IDs and permissions stay the same.
 - `Anywhere-Role`: `owner`, `developer` or `member`. Restrict owner-only features appropriately. Finer permissions belong in the app's data, keyed by user ID.
 
-The gateway strips client-supplied copies of these headers. Read `req.headers["anywhere-user-id"]` in Node, `req.get("Anywhere-User-ID")` in Express, or `request.headers["Anywhere-User-ID"]` in Flask. Local tests can supply them with `curl -H 'Anywhere-User-ID: 0190a1b2-c3d4-7e5f-8a9b-0c1d2e3f4a5b' -H 'Anywhere-User: jo' -H 'Anywhere-Role: member' localhost:8080`; deployed apps must rely on the gateway.
+The gateway strips client-supplied copies of these headers. Read `req.headers["anywhere-user-id"]` in Node, `req.get("Anywhere-User-ID")` in Express, or `request.headers.get("Anywhere-User-ID")` in Flask:
+
+```js
+function getCaller(req) {
+  return {
+    id: req.headers["anywhere-user-id"] ?? null,       // permanent UUID
+    username: req.headers["anywhere-user"] ?? null,   // display handle
+    role: req.headers["anywhere-role"] ?? "anonymous" // "owner" | "developer" | "member" | "anonymous"
+  };
+}
+```
+
+Local tests can supply them with `curl -H 'Anywhere-User-ID: 0190a1b2-c3d4-7e5f-8a9b-0c1d2e3f4a5b' -H 'Anywhere-User: jo' -H 'Anywhere-Role: member' localhost:8080`; deployed apps must rely on the gateway. To offer sign-in on a public app, link to `/_anywhere/login`, which signs in the owner or an invited person and redirects back to `/`.
 
 Existing software can retain its own login: users pass Anywhere sign-in first, then the app's login. The gateway passes app cookies and the app's own `Authorization` header through. An app's API key/password does not grant Anywhere access. Never put an Anywhere account token in an app, browser page or URL.
 

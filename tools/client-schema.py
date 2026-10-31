@@ -35,6 +35,7 @@ OPERATIONS = {
     'app_ticket_create',
     'app_usage',
     'app_view',
+    'cli_build_view',
     'cli_login_create',
     'cli_login_token',
     'deploy_create',

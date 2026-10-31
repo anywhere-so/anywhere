@@ -9,10 +9,10 @@ and workspace owners manage that app; management alone grants no runtime access.
 ```sh
 anywhere workspaces list
 anywhere --workspace acme apps list
-anywhere deploy . --workspace acme
+anywhere deploy ~/.anywhere/apps/acme/wiki --workspace acme
 anywhere exec acme/wiki -- ls
 anywhere logs --app acme/wiki
-anywhere pull acme/wiki /app ./wiki
+anywhere pull acme/wiki /app ~/.anywhere/apps/acme/wiki
 anywhere --workspace acme usage
 ```
 
@@ -24,9 +24,9 @@ name, wrong API origin, revoked membership or conflicting selector stops the
 command. Never retry by changing the destination to personal or recreating it.
 
 ```sh
-anywhere workspaces bind acme/wiki ./wiki
-anywhere workspaces bind other/wiki ./wiki --replace
-anywhere workspaces unbind ./wiki
+anywhere workspaces bind acme/wiki ~/.anywhere/apps/acme/wiki
+anywhere workspaces bind other/wiki ~/.anywhere/apps/other/wiki --replace
+anywhere workspaces unbind ~/.anywhere/apps/acme/wiki
 ```
 
 Binding changes local destination metadata only; it never transfers an app or its

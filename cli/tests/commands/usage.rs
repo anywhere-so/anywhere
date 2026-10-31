@@ -294,7 +294,7 @@ async fn before_any_charge_it_says_so_and_dollars_round_down() {
     assert!(output.status.success(), "{}", text(&output.stderr));
     assert!(
         text(&output.stdout).starts_with(
-            "Usage this month (Free): 41%, $2.99 of $3.00 · nothing charged yet: each hour is charged after it ends · resets 1 Nov\n"
+            "Usage this period (Free): 41%, $2.99 of $3.00 · nothing charged yet: each hour is charged after it ends · resets 1 Nov\n"
         ),
         "{}",
         text(&output.stdout)
@@ -309,9 +309,9 @@ async fn no_app_reads_the_account_and_prints_the_contract_layout() {
     assert_eq!(
         text(&output.stdout),
         "\
-Usage this month (Free): 41%, $1.23 of $3.00 · on track for about 55% by 31 Oct · resets 1 Nov
+Usage this period (Free): 41%, $1.23 of $3.00 · on track for about 55% by 31 Oct · resets 1 Nov
 State: ok
-APP   THIS MONTH   BY MONTH END
+APP   THIS PERIOD  BY RESET
 blog  $0.62        about $0.90
 Rates: memory $0.025/GiB-hour · CPU $0.10/vCPU-hour · disk $0.30/GiB-month · data out $0.20/GiB
 At 100%, your apps pause and nothing is lost; they start again on 1 Nov, or at once on upgrading to Pro.
@@ -337,7 +337,7 @@ async fn app_dollars_and_requested_breakdown_are_added_to_its_usage() {
         text(&output.stdout).starts_with(
             "\
 notes: up to 1 shared vCPU, 2 GiB memory, 10 GiB disk; running
-This month: $1.23 · about $1.65 by month end
+This period: $1.23 · about $1.65 by reset
   memory $1.00 · CPU $0.09 · disk $0.09 · data out $0.05
 last 24 hours, a point every 5 minutes; readings for all of it
 "

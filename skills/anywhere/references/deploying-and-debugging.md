@@ -2,15 +2,17 @@
 
 ## Choose the target and validate
 
-For an existing app, inspect its current limits before deploying. A bare app name targets the user's app; a shared app requires `OWNER/NAME`:
+Locate or create the app's local folder in order: `.` when `./app.toml` is already in the current directory; `.anywhere/apps/<app>` when the app belongs with the current project repository; or `~/.anywhere/apps/<app>` by default (`<owner>/<app>` for a shared app).
+
+For an existing app, run `anywhere apps inspect NAME` before editing or deploying to check its current `[limits]` and whether a newer deploy happened from another machine or developer. A bare app name targets the user's app; a shared app requires `OWNER/NAME`:
 
 ```sh
 anywhere apps inspect alice/wiki
-anywhere check ./wiki
-anywhere deploy ./wiki --app alice/wiki
+anywhere check ~/.anywhere/apps/alice/wiki --app alice/wiki
+anywhere deploy ~/.anywhere/apps/alice/wiki --app alice/wiki
 ```
 
-`anywhere deploy ./wiki` instead targets the user's own `wiki`. Preserve the qualified target for logs, secrets, exec and pull too; see [shared apps](managing-apps.md#apps-shared-with-the-user).
+`anywhere deploy ~/.anywhere/apps/alice/wiki` without `--app alice/wiki` instead targets the user's own `wiki`. Preserve the qualified target for logs, secrets, exec and pull too; see [shared apps](managing-apps.md#apps-shared-with-the-user).
 
 `anywhere check DIR` validates configuration and selected upload files offline; when signed in it also reads current plan ceilings. `plan_checked` reports whether it did. For a shared app, the deployment checks the owner's ceilings. Upload excludes `.git`, `.env`, `.env.*` and files ignored by the folder's `.gitignore` rules. Limits: 50,000 files, 1 GiB total, 30 MiB/file. Exclude local dependencies and runtime data. Static output has a [special upload rule](building-apps.md#static-sites).
 
@@ -77,7 +79,14 @@ anywhere exec notes -- cat report.csv > report.csv
 anywhere exec notes -- sh -c 'apt-get update && apt-get install -y ffmpeg'
 ```
 
-`anywhere pull APP PATH [DIR]` copies a remote folder into an empty/missing local directory, default `./APP` without its owner. It includes databases, dependencies and all other contents, regardless of `.gitignore`. It refuses links escaping that folder (`pull_link_unsafe`), including typical `.venv/bin/python3` links. Prefer narrow source folders such as `/app/src` when full `/app` contains those links or large state. Review upload exclusions before redeploying pulled files.
+`anywhere pull APP PATH [DIR]` copies a remote folder into an empty/missing local directory. Always pass `DIR` explicitly—such as `~/.anywhere/apps/APP` (or `.anywhere/apps/APP` in a project repo, and `~/.anywhere/apps/OWNER/APP` for a shared app)—because omitting `DIR` writes into `./APP` in the current working directory and pollutes whatever repository the session is in:
+
+```sh
+anywhere pull notes /app ~/.anywhere/apps/notes
+anywhere pull alice/wiki /app ~/.anywhere/apps/alice/wiki
+```
+
+Pull includes databases, dependencies and all other contents under `PATH`, regardless of `.gitignore`. It refuses links escaping that folder (`pull_link_unsafe`), including typical `.venv/bin/python3` links. Prefer narrow source folders such as `/app/src` when full `/app` contains those links or large state. Review upload exclusions before redeploying pulled files.
 
 ## Automation and verification
 
@@ -87,8 +96,8 @@ Verify the user's feature through the returned app URL with Anywhere authenticat
 
 ## Usage, performance and paused apps
 
-`anywhere usage` reports the account's UTC month: usage, available balance, percentage, forecast and rates. `anywhere usage NAME` reports the app's CPU/memory/disk/network, limits and problems. Ranges are `1h`, default `24h`, `7d`, `30d`; `--range` requires an app. Add `--detail --json` for points and per-point costs; app JSON otherwise omits points. Developers see resource diagnostics but no owner's dollar amounts.
+`anywhere usage` reports the account's current usage period, a calendar month in UTC on Free and from the subscription's billing date on Pro: usage, available balance, percentage, forecast and rates. `anywhere usage NAME` reports the app's CPU/memory/disk/network, limits and problems. Ranges are `1h`, default `24h`, `7d`, `30d`; `--range` requires an app. Add `--detail --json` for points and per-point costs; app JSON otherwise omits points. Developers see resource diagnostics but no owner's dollar amounts.
 
 For high costs, find the costly app and rising `cost_microusd` points, then correlate with deploy history and logs. For restarts, OOMs or slowness, read each problem's `fix`; structured `change.key/value` names a proposed `[limits]` edit, and `needs_plan`/`upgrade_url` identify an owner decision. Problems are scoped since the newest deploy. Apply only the chosen change, redeploy and recheck usage.
 
-Pass `usage_high` warnings (percentage, reset date, top app) to the user. `usage_limit_reached` means account apps are paused, with data retained. Offer the supplied billing/top-up URL or ask the owner for a shared app. Added usage or the next UTC month resumes apps automatically; repeated deploy/exec or new accounts do not resolve the limit.
+Pass `usage_high` warnings (percentage, reset date, top app) to the user. `usage_limit_reached` means account apps are paused, with data retained. Offer the supplied billing/top-up URL or ask the owner for a shared app. Added usage or the account's next usage period resumes apps automatically; repeated deploy/exec or new accounts do not resolve the limit.

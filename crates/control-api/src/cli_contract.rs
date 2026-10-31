@@ -4,10 +4,41 @@
 //! while the front door strips `anywhere-` headers. The gateway refuses a CLI
 //! on another contract with `cli_outdated` before the request goes anywhere
 //! (the API boundary), so a route or field the CLI relies on that has
-//! since changed never answers it with something else.
+//! since changed never answers it with something else. The one route it
+//! doesn't refuse is [`CLI_BUILD_PATH`]'s, which `anywhere update` asks
+//! whatever the contract, so it never changes in a way an installed CLI can't
+//! read.
 
 use http::HeaderMap;
 use http::header::USER_AGENT;
+use schemars::JsonSchema;
+use serde::{Deserialize, Serialize};
+
+/// Where the control API answers [`CliBuild`] for a target, which the gateway
+/// answers whatever contract the CLI was built for, so a CLI on any contract
+/// can update itself.
+pub const CLI_BUILD_PATH: &str = "/v1/cli/{target}";
+
+/// The CLI the platform serves for one target: what `anywhere update`
+/// compares its own executable with, and where it installs from. Every CLI
+/// that can update reads it, so it only ever gains fields.
+#[derive(Clone, Debug, PartialEq, Eq, Deserialize, Serialize, JsonSchema)]
+pub struct CliBuild {
+    /// The target, such as `aarch64-apple-darwin`.
+    pub target: String,
+    /// The BLAKE3 hash of the build, as 64 lowercase hex digits. A CLI whose
+    /// own executable hashes the same is the one the platform serves.
+    pub blake3: String,
+    /// The platform's origin, such as `https://anywhere.so`, which serves
+    /// `/install.sh` and the builds it installs.
+    pub platform: String,
+}
+
+/// The target a CLI was built for, in [`CLI_BUILD_PATH`].
+#[derive(Clone, Debug, Deserialize, Serialize, JsonSchema)]
+pub struct CliTargetPath {
+    pub target: String,
+}
 
 /// The version of the contract between the CLI and the platform: this API's
 /// routes, requests and answers, the upload and exec streams, and what
@@ -88,7 +119,7 @@ impl CliOutdated {
             Self::Unreadable => "this CLI's User-Agent doesn't say which contract it was built for, as `anywhere/<version> (contract <N>)`".to_owned(),
         };
         format!(
-            "{cli}, and the platform at {platform_url} needs contract {CONTRACT}; install the CLI it serves with `curl -fsSL {platform_url}/install.sh | sh`, then run the command again"
+            "{cli}, and the platform at {platform_url} needs contract {CONTRACT}; install the CLI it serves with `anywhere update`, or with `curl -fsSL {platform_url}/install.sh | sh` if this CLI has no `update` command, then run the command again"
         )
     }
 }
@@ -180,7 +211,7 @@ mod tests {
 
         let platform = "https://anywhere.test";
         let ending = format!(
-            ", and the platform at https://anywhere.test needs contract {CONTRACT}; install the CLI it serves with `curl -fsSL https://anywhere.test/install.sh | sh`, then run the command again"
+            ", and the platform at https://anywhere.test needs contract {CONTRACT}; install the CLI it serves with `anywhere update`, or with `curl -fsSL https://anywhere.test/install.sh | sh` if this CLI has no `update` command, then run the command again"
         );
         for (outdated, start) in [
             (

@@ -31,6 +31,18 @@ async fn install_with(home: &Path, claude: &Path, umask: &str) -> Output {
         .unwrap()
 }
 
+/// The skill's entrypoint as the CLI writes it: the source's, with the CLI's
+/// version at the end of its frontmatter (build.rs).
+fn stamped(source: &str) -> String {
+    let end = 4 + source[4..].find("\n---\n").unwrap() + 1;
+    format!(
+        "{}metadata:\n  version: \"{}\"\n{}",
+        &source[..end],
+        env!("ANYWHERE_VERSION"),
+        &source[end..]
+    )
+}
+
 /// Compare the installed bundle to the maintained source, including modes.
 fn assert_bundle(installed: &Path) {
     use std::os::unix::fs::PermissionsExt as _;
@@ -45,9 +57,13 @@ fn assert_bundle(installed: &Path) {
             if source.is_dir() {
                 compare(&source, &destination);
             } else {
+                let mut expected = std::fs::read_to_string(&source).unwrap();
+                if source.file_name().unwrap() == "SKILL.md" {
+                    expected = stamped(&expected);
+                }
                 assert_eq!(
-                    std::fs::read(&destination).unwrap(),
-                    std::fs::read(&source).unwrap(),
+                    std::fs::read_to_string(&destination).unwrap(),
+                    expected,
                     "{}",
                     destination.display()
                 );
@@ -93,7 +109,7 @@ async fn skill_install_writes_the_skill_it_carries_for_claude_code_and_codex() {
         json!({"installed": [
             {"agent": "claude-code", "path": claude.display().to_string()},
             {"agent": "codex", "path": codex.display().to_string()},
-        ]})
+        ], "version": env!("ANYWHERE_VERSION")})
     );
     assert!(output.stderr.is_empty(), "{}", text(&output.stderr));
     for path in [&claude, &codex] {
@@ -172,7 +188,7 @@ async fn skill_install_follows_claude_codes_folder_and_sets_its_own_modes() {
             json!({"installed": [
                 {"agent": "claude-code", "path": skill.display().to_string()},
                 {"agent": "codex", "path": codex.display().to_string()},
-            ]}),
+            ], "version": env!("ANYWHERE_VERSION")}),
             "umask {umask}"
         );
         assert!(!home.path().join(".claude").exists());
@@ -196,4 +212,20 @@ async fn skill_install_follows_claude_codes_folder_and_sets_its_own_modes() {
             );
         }
     }
+}
+
+/// A build that's no release's never writes over an installed skill, so a
+/// platform developer's builds and tests leave their own CLI's alone; a
+/// release's keeps it its own (skill.rs).
+#[tokio::test]
+async fn a_build_thats_no_release_leaves_an_installed_skill_alone() {
+    assert!(!env!("ANYWHERE_VERSION").contains('+'));
+    let home = tempfile::tempdir().unwrap();
+    let claude = home.path().join(".claude/skills/anywhere/SKILL.md");
+    std::fs::create_dir_all(claude.parent().unwrap()).unwrap();
+    std::fs::write(&claude, "an older skill").unwrap();
+    let output = run_at_home(Some(home.path()), &["--json", "apps", "list"]).await;
+    failure(&output, "not_signed_in");
+    assert_eq!(std::fs::read_to_string(&claude).unwrap(), "an older skill");
+    assert!(!home.path().join(".agents").exists());
 }

@@ -37,11 +37,11 @@ Add waits for access to take effect and prints the URL. Give that link to the us
 
 ## Apps shared with the user
 
-`anywhere apps list` and the portal's "Shared with me" show `OWNER/NAME` and the role. In an unbound folder, a bare name targets the personal workspace. A bound folder uses its saved workspace and app IDs; conflicting names fail. Read [workspaces](workspaces.md) for team access.
+`anywhere apps list` and the portal's "Shared with me" show `OWNER/NAME` and the role. In an unbound folder, a bare name targets the personal workspace. A bound folder uses its saved workspace and app IDs; conflicting names fail. Read [workspaces](workspaces.md) for team access. Keep shared checkouts under `~/.anywhere/apps/OWNER/NAME` (or `.anywhere/apps/OWNER/NAME` in a project repo) so they never collide with the user's own apps or pollute the current repository:
 
 ```sh
-anywhere pull alice/wiki /app ./wiki
-anywhere deploy ./wiki --app alice/wiki
+anywhere pull alice/wiki /app ~/.anywhere/apps/alice/wiki
+anywhere deploy ~/.anywhere/apps/alice/wiki --app alice/wiki
 anywhere logs --app alice/wiki
 anywhere exec alice/wiki -- ls
 anywhere apps inspect alice/wiki
@@ -57,7 +57,7 @@ Preserve `OWNER/NAME` in deploy, pull, exec, inspect, logs and secrets. Pull pri
 
 Use `anywhere exec drive -- COMMAND`, working in `/app`, for file operations: `ls -la data`, `cat data/notes.txt`, `mkdir -p data/projects`, `mv`, or `sh -c 'cat > data/notes.txt' < notes.txt`. Overwrites/removals affect the user's files; perform only the requested changes. Leave staging directory `data/.drive-uploads` alone.
 
-Changing the Drive's code follows the ordinary app workflow. It has `server.js` and `public/`, no dependencies and no build. Full `anywhere pull drive /app ./drive` also downloads user data and can be large. For code only, pull `/app/public` into `./drive/public`, then fetch `server.js`, `app.toml` and `.gitignore` with exec/cat. Keep `data/` excluded before deploying; the Drive's `.gitignore` normally excludes it.
+Changing the Drive's code follows the ordinary app workflow. It has `server.js` and `public/`, no dependencies and no build. Full `anywhere pull drive /app ~/.anywhere/apps/drive` also downloads user data and can be large. For code only, pull `/app/public` into `~/.anywhere/apps/drive/public`, then fetch `server.js`, `app.toml` and `.gitignore` into `~/.anywhere/apps/drive/` with exec/cat. Keep `data/` excluded before deploying `~/.anywhere/apps/drive`; the Drive's `.gitignore` normally excludes it.
 
 ## Delete an app
 

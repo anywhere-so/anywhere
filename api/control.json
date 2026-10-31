@@ -46,7 +46,7 @@
             "description": "The numeric limits resolved at its last deploy."
           },
           "month_cost_microusd": {
-            "description": "This UTC month\u2019s cost, visible only to its owner.",
+            "description": "This usage period\u2019s cost, visible only to its owner.",
             "format": "uint64",
             "minimum": 0,
             "nullable": true,
@@ -1072,7 +1072,7 @@
                 "$ref": "#/components/schemas/UsageCost"
               }
             ],
-            "description": "This calendar month\u2019s dollars; only the owner sees them.",
+            "description": "The owner's current usage period's dollars; only the owner sees them.",
             "nullable": true
           },
           "disk_used_bytes": {
@@ -1180,7 +1180,7 @@
         "type": "object"
       },
       "UsageCost": {
-        "description": "Whole micro-dollars charged this UTC calendar month, and its forecast.",
+        "description": "Whole micro-dollars charged in the owner's current usage period, and its forecast to the period's end.",
         "properties": {
           "cpu_microusd": {
             "format": "uint64",
@@ -1648,6 +1648,29 @@
         ],
         "type": "object"
       },
+      "CliBuild": {
+        "description": "The CLI the platform serves for one target: what `anywhere update` compares its own executable with, and where it installs from. Every CLI that can update reads it, so it only ever gains fields.",
+        "properties": {
+          "blake3": {
+            "description": "The BLAKE3 hash of the build, as 64 lowercase hex digits. A CLI whose own executable hashes the same is the one the platform serves.",
+            "type": "string"
+          },
+          "platform": {
+            "description": "The platform's origin, such as `https://anywhere.so`, which serves `/install.sh` and the builds it installs.",
+            "type": "string"
+          },
+          "target": {
+            "description": "The target, such as `aarch64-apple-darwin`.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "blake3",
+          "platform",
+          "target"
+        ],
+        "type": "object"
+      },
       "Me": {
         "description": "Who's signed in, their plan and how much of it their apps use.",
         "properties": {
@@ -1826,13 +1849,13 @@
             "type": "array"
           },
           "available_microusd": {
-            "description": "This month's included amount plus grants made before its end, minus earlier UTC months' overage, floored at zero. Remaining usage is this amount minus used_microusd; the limit is reached when used >= available.",
+            "description": "This period's included amount plus grants made before its end, minus earlier periods' overage, floored at zero. Remaining usage is this amount minus used_microusd; the limit is reached when used >= available.",
             "format": "uint64",
             "minimum": 0,
             "type": "integer"
           },
           "charged_through": {
-            "description": "The end of the newest charged hour, or null before any charges this month.",
+            "description": "The end of the newest charged hour, or null before any charges this period.",
             "format": "date-time",
             "nullable": true,
             "type": "string"
@@ -1885,7 +1908,7 @@
             "type": "array"
           },
           "topup_balance_microusd": {
-            "description": "Available usage left after this month's charges, floored at zero.",
+            "description": "Available usage left after this period's charges, floored at zero.",
             "format": "uint64",
             "minimum": 0,
             "type": "integer"
@@ -1913,7 +1936,7 @@
         "type": "object"
       },
       "AccountAppUsage": {
-        "description": "Whole micro-dollars charged this UTC calendar month, and its forecast.",
+        "description": "Whole micro-dollars charged in the owner's current usage period, and its forecast to the period's end.",
         "properties": {
           "app": {
             "type": "string"
@@ -1969,6 +1992,7 @@
         "type": "object"
       },
       "UsagePeriod": {
+        "description": "A usage period, a month long: a calendar month in UTC on Free, and from the subscription's billing date on Pro. A change of plan starts a new one.",
         "properties": {
           "from": {
             "format": "date-time",
@@ -3351,6 +3375,50 @@
         "summary": "What an app used over a range, against its limits."
       }
     },
+    "/v1/cli/{target}": {
+      "get": {
+        "description": "compares itself with, and the platform that installs it.\n\nThe gateway answers it whatever contract the CLI says it was built for, so even a CLI it otherwise refuses with `cli_outdated` can update itself; its answer only ever gains fields. A target the platform has no build for is `no_such_cli`.",
+        "operationId": "cli_build_view",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "target",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CliBuild"
+                }
+              }
+            },
+            "description": "successful operation",
+            "headers": {
+              "cache-control": {
+                "required": true,
+                "schema": {
+                  "type": "string"
+                },
+                "style": "simple"
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "summary": "The CLI this platform serves for a target, which `anywhere update`"
+      }
+    },
     "/v1/me": {
       "get": {
         "description": "The plan's limits, and how many apps they have, which it caps.",
@@ -3502,7 +3570,7 @@
             "$ref": "#/components/responses/Error"
           }
         },
-        "summary": "This signed-in account\u2019s usage and dollars for the UTC calendar month."
+        "summary": "This signed-in account\u2019s usage and dollars for its current usage period."
       }
     },
     "/v1/workspace-invitations/accept": {
