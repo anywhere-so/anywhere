@@ -163,7 +163,7 @@ enum Command {
     },
     /// Show what an app used over a range against its size's limits: its CPU, memory, disk and network now, on average and at their peak, and each problem it ran into, such as running out of memory, with the app.toml change that fixes it. It changes nothing.
     Usage {
-        /// The app: NAME, one of yours, or OWNER/NAME, one whose owner made you a developer. Without it, the signed-in account’s usage this month.
+        /// The app: NAME, one of yours, or OWNER/NAME, one whose owner made you a developer. Without it, the signed-in account’s usage this period.
         app: Option<String>,
         /// An app's range, up to now: 1h (a point every 30 seconds), 24h (every 5 minutes, the default), 7d or 30d (every hour). Needs APP.
         #[arg(long, value_enum)]

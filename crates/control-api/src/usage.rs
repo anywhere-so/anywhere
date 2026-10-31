@@ -95,7 +95,7 @@ impl std::fmt::Display for UsageRange {
 /// ran into them.
 #[derive(Clone, Debug, PartialEq, Deserialize, Serialize, JsonSchema)]
 pub struct AppUsage {
-    /// This calendar month’s dollars; only the owner sees them.
+    /// The owner's current usage period's dollars; only the owner sees them.
     pub cost: Option<UsageCost>,
     /// The app's name.
     pub app: String,
@@ -551,7 +551,8 @@ mod tests {
     }
 }
 
-/// Whole micro-dollars charged this UTC calendar month, and its forecast.
+/// Whole micro-dollars charged in the owner's current usage period, and its
+/// forecast to the period's end.
 #[derive(Clone, Debug, Default, PartialEq, Eq, Deserialize, Serialize, JsonSchema)]
 pub struct UsageCost {
     pub used_microusd: u64,
@@ -571,6 +572,8 @@ pub struct UsageRates {
     pub egress_gib_microusd: u64,
 }
 
+/// A usage period, a month long: a calendar month in UTC on Free, and from
+/// the subscription's billing date on Pro. A change of plan starts a new one.
 #[derive(Clone, Debug, PartialEq, Eq, Deserialize, Serialize, JsonSchema)]
 pub struct UsagePeriod {
     pub from: DateTime<Utc>,
@@ -592,15 +595,15 @@ pub struct AccountUsage {
     pub state: UsageState,
     pub plan: Plan,
     pub period: UsagePeriod,
-    /// The end of the newest charged hour, or null before any charges this month.
+    /// The end of the newest charged hour, or null before any charges this period.
     pub charged_through: Option<DateTime<Utc>>,
     pub included_microusd: u64,
     /// Top-up amounts offered by the account's current plan terms.
     pub topup_amounts_microusd: Vec<u64>,
-    /// Available usage left after this month's charges, floored at zero.
+    /// Available usage left after this period's charges, floored at zero.
     pub topup_balance_microusd: u64,
-    /// This month's included amount plus grants made before its end, minus
-    /// earlier UTC months' overage, floored at zero. Remaining usage is this
+    /// This period's included amount plus grants made before its end, minus
+    /// earlier periods' overage, floored at zero. Remaining usage is this
     /// amount minus used_microusd; the limit is reached when used >= available.
     pub available_microusd: u64,
     pub used_microusd: u64,

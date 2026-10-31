@@ -59,7 +59,7 @@ pub async fn show(
 ) -> Result<ResultData, CliError> {
     if app.is_none() && range.is_some() {
         return Err(CliError::Arguments {
-            detail: "--range needs an app; run `anywhere usage NAME --range 7d`, or omit --range to read your account's usage this month".to_owned(),
+            detail: "--range needs an app; run `anywhere usage NAME --range 7d`, or omit --range to read your account's usage this period".to_owned(),
         });
     }
     let (control, _) = control::connect()?;
@@ -117,7 +117,7 @@ pub fn account_text(account: &Account) -> String {
     let u = &account.usage;
     let percent =
         |n: Option<u64>| n.map_or_else(|| "no included usage".to_owned(), |n| format!("{n}%"));
-    let last_day = u.period.resets_at - chrono::TimeDelta::days(1);
+    let last_day = u.period.resets_at - chrono::TimeDelta::seconds(1);
     let outlook = if u.charged_through.is_some() {
         format!(
             "on track for about {} by {}",
@@ -128,7 +128,7 @@ pub fn account_text(account: &Account) -> String {
         "nothing charged yet: each hour is charged after it ends".to_owned()
     };
     let mut out = format!(
-        "Usage this month ({}): {}, {} of {} · {outlook} · resets {}\n",
+        "Usage this period ({}): {}, {} of {} · {outlook} · resets {}\n",
         match u.plan {
             control_api::Plan::Free => "Free",
             control_api::Plan::Pro => "Pro",
@@ -157,7 +157,7 @@ pub fn account_text(account: &Account) -> String {
     let width = names.iter().map(String::len).max().unwrap_or(3).max(3) + 2;
     out.push_str(&format!(
         "{:width$}{:<13}{}\n",
-        "APP", "THIS MONTH", "BY MONTH END"
+        "APP", "THIS PERIOD", "BY RESET"
     ));
     for (app, name) in u.apps.iter().zip(names) {
         out.push_str(&format!(
@@ -227,7 +227,7 @@ pub fn text(usage: &Usage) -> (String, Option<(String, &'static str)>) {
         line(
             &mut out,
             &format!(
-                "This month: {} · about {} by month end",
+                "This period: {} · about {} by reset",
                 dollars(cost.used_microusd),
                 dollars(cost.forecast_microusd)
             ),
