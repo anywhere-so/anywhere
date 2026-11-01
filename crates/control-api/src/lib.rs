@@ -15,8 +15,10 @@ mod cli_contract;
 mod cli_login;
 mod follow;
 pub mod plans;
+mod sleep;
 mod usage;
 mod workspaces;
+pub use sleep::*;
 /// The most a deploy's request may be, as JSON: room for any app's list of
 /// files, while bounding what one deploy makes the control plane read before it
 /// checks the list. The CLI checks its request against it before sending, and
@@ -718,6 +720,8 @@ pub struct Warning {
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Deserialize, Serialize, JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum OperationKind {
+    /// Changes sleep settings without restarting apps.
+    SleepChange,
     /// A workspace membership, invitation or access change, with its drain barrier.
     WorkspaceChange,
     /// Renames an account and releases its old username after gateway drain.

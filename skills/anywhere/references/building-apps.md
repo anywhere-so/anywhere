@@ -55,7 +55,7 @@ A combined web/worker app still has one platform command. For example, `web = "s
 
 ## Sleep
 
-Web apps and static sites default to `sleep = "auto"`; workers use `never`.
+Web apps and static sites inherit account sleep defaults; workers stay awake.
 See [sleep](sleep.md) for mode selection, idle rules and background-job leases.
 
 ### Browser presence

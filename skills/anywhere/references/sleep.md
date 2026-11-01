@@ -6,15 +6,38 @@
 | Finite work after an HTTP response | `auto` with a job lease |
 | Bots, polling, internal schedules, or no wake delay | `sleep = "never"` |
 
-Workers never sleep. Explain the tradeoff and let the user choose.
+Workers never sleep. Let the user choose.
+
+## Defaults and overrides
+
+Account → Sleep defaults controls mode and idle timeout (initially `auto`, 30 seconds).
+Apps inherit omitted settings; changes apply without restarting them.
+App → Sleep changes one app. A deploy replaces its overrides from `app.toml`:
+
+```toml
+sleep = "auto"
+sleep_after_seconds = 120
+```
+
+Omit either field to inherit it. Existing auto apps initially inherit; existing
+always-on apps keep `never`.
+
+```sh
+anywhere sleep                         # read account defaults
+anywhere sleep --after 60              # change account timeout
+anywhere sleep notes --mode never      # override one app
+anywhere sleep notes --inherit         # clear both overrides
+```
+
+An idle timeout is a base; presence and job leases still keep apps awake.
 Asleep, CPU and memory charges stop; disk and previous usage remain. Forecasts
 reflect recent usage, so savings appear gradually.
 
 ## Idle and wake
 
 Requests, WebSockets, uploads, exec, browser presence and job leases keep an app
-awake. CPU and outgoing traffic do not. The idle wait is 30 seconds. Waking within
-a minute of sleep doubles it, up to four minutes; sleeping over 30 minutes resets
+awake. CPU and outgoing traffic do not. The idle wait follows the effective timeout. Waking within
+a minute of sleep doubles it, up to four minutes or the configured base, whichever is longer; sleeping over 30 minutes resets
 it. Released or expired leases stop blocking the next sleep attempt.
 
 A visible tab used within the last minute keeps the app awake. Hiding it stops

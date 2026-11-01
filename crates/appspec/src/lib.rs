@@ -99,11 +99,12 @@ pub struct AppSpec {
     pub start_timeout: Option<u32>,
     /// Whether the app sleeps when nobody uses it: `"auto"`, so it's saved to
     /// disk once idle and woken by its next request or `anywhere exec`, or
-    /// `"never"`. Left out, the platform chooses by the kind of app: `"auto"`
-    /// for a web app or static site, `"never"` for a background app, which
-    /// may not sleep.
+    /// `"never"`. Omitted values inherit the account default. Workers never sleep.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub sleep: Option<Sleep>,
+    /// Idle seconds before sleep; omitted values inherit the account default.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub sleep_after_seconds: Option<u32>,
 }
 
 /// Whether an app sleeps when nobody uses it.
@@ -280,6 +281,8 @@ pub enum SpecError {
         "A background app has no address, so nothing could wake it once it sleeps. It would stop running without an error. Use `sleep = \"never\"` (the default for background apps), or make it a web app if it only needs to run when asked. A scheduler that wakes apps on a timer is planned."
     )]
     SleepWithoutAddress,
+    #[error("sleep_after_seconds must be a whole number of seconds greater than zero")]
+    BadSleepAfter,
 }
 
 impl SpecError {
@@ -316,6 +319,7 @@ impl SpecError {
             SpecError::BadStartTimeout { .. } | SpecError::StartTimeoutWithoutWeb => {
                 "app_start_timeout_invalid"
             }
+            SpecError::BadSleepAfter => "sleep_after_invalid",
             SpecError::SleepWithoutAddress => "sleep_needs_an_address",
         }
     }
@@ -452,6 +456,9 @@ impl AppSpec {
             if seconds == 0 || seconds > MAX_START_TIMEOUT {
                 return Err(SpecError::BadStartTimeout { seconds });
             }
+        }
+        if self.sleep_after_seconds == Some(0) {
+            return Err(SpecError::BadSleepAfter);
         }
         if self.sleep == Some(Sleep::Auto) && self.kind()? == Kind::Worker {
             return Err(SpecError::SleepWithoutAddress);
@@ -630,6 +637,7 @@ worker = "node worker.js"
                 image: None,
                 start_timeout: None,
                 sleep: None,
+                sleep_after_seconds: None,
             }
         );
         assert_eq!(
@@ -660,6 +668,7 @@ worker = "node worker.js"
                 image: None,
                 start_timeout: None,
                 sleep: None,
+                sleep_after_seconds: None,
             }
         );
         assert_eq!(
@@ -779,6 +788,7 @@ worker = "node worker.js"
                 image: None,
                 start_timeout: None,
                 sleep: None,
+                sleep_after_seconds: None,
             };
         let web = |title: &str, command: &str, port| spec(title, Some(command), None, port);
         let worker = |command: &str, port| spec("Hi", None, Some(command), port);
@@ -1062,6 +1072,24 @@ start_timeout = 900
         let error = with("run\0").unwrap_err();
         assert_eq!(error, SpecError::BuildHasNul);
         assert_eq!(error.code(), "app_build_invalid");
+    }
+
+    #[test]
+    fn idle_timeout_is_optional_and_positive() {
+        assert_eq!(parse(HELLO).unwrap().sleep_after_seconds, None);
+        for seconds in [1, 30, 600, u32::MAX] {
+            let spec = parse(&format!("sleep_after_seconds = {seconds}\n{HELLO}")).unwrap();
+            assert_eq!(spec.sleep_after_seconds, Some(seconds));
+        }
+        assert_eq!(
+            parse(&format!("sleep_after_seconds = 0\n{HELLO}"))
+                .unwrap_err()
+                .code(),
+            "sleep_after_invalid"
+        );
+        let mut spec = parse(HELLO).unwrap();
+        spec.sleep_after_seconds = Some(0);
+        assert_eq!(spec.check().unwrap_err().code(), "sleep_after_invalid");
     }
 
     #[test]

@@ -20,6 +20,9 @@ fn main() -> Result<(), Box<dyn Error>> {
     let mut settings = progenitor::GenerationSettings::default();
     for name in [
         "AppIdentity",
+        "SleepSettings",
+        "SleepOverrides",
+        "AppSleepSettings",
         "Workspace",
         "WorkspaceKind",
         "WorkspaceRole",

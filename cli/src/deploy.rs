@@ -175,11 +175,6 @@ async fn follow(
     output: Output,
 ) -> Result<ResultData, CliError> {
     let kind = checked.app.spec.kind().map_err(CliError::AppToml)?;
-    let sleep = checked
-        .app
-        .spec
-        .resolved_sleep()
-        .map_err(CliError::AppToml)?;
     let image = checked.app.spec.image.as_deref();
     let waited = deploy_deadline(&checked.app.spec);
     let warning = operation.warning.clone();
@@ -214,6 +209,20 @@ async fn follow(
                         operation: operation.id,
                     });
                 }
+            };
+            let sleep = if kind == Kind::Worker {
+                appspec::Sleep::Never
+            } else if let Some(mode) = checked.app.spec.sleep {
+                mode
+            } else {
+                control
+                    .client
+                    .app_sleep_view(app.name.as_str(), app.owner())
+                    .await
+                    .map_err(|error| control.error(error))?
+                    .into_inner()
+                    .effective
+                    .sleep
             };
             return Ok(ResultData::Deploy {
                 operation: operation.id,

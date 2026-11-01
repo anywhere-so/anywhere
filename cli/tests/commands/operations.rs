@@ -331,6 +331,7 @@ async fn a_deploy_ends_saying_the_app_sleeps_when_idle_only_if_it_does() {
     let note = "note: Sleeps when idle and wakes on the next request (`sleep = \"auto\"`). Timers and background work pause while it sleeps; use `sleep = \"never\"` if it must keep running.\n";
     for (name, toml, background, sleeps) in [
         ("plain", TOML.to_owned(), false, true),
+        ("account-never", TOML.to_owned(), false, false),
         ("auto", format!("sleep = \"auto\"\n{TOML}"), false, true),
         ("never", format!("sleep = \"never\"\n{TOML}"), false, false),
         ("ticker", WORKER_TOML.to_owned(), true, false),
@@ -341,8 +342,14 @@ async fn a_deploy_ends_saying_the_app_sleeps_when_idle_only_if_it_does() {
         if background {
             done["url"] = Value::Null;
         }
-        let server =
-            Server::start(vec![personal_workspace(), no_logs(), started(done.clone())]).await;
+        let settings = reply(
+            json!({"overrides":{"sleep":null,"sleep_after_seconds":null},"defaults":{"sleep":if sleeps {"auto"} else {"never"},"sleep_after_seconds":30},"effective":{"sleep":if sleeps {"auto"} else {"never"},"sleep_after_seconds":30},"worker":false}),
+        );
+        let mut replies = vec![personal_workspace(), no_logs(), started(done.clone())];
+        if name == "plain" || name == "account-never" {
+            replies.push(settings);
+        }
+        let server = Server::start(replies).await;
         let output = server.run(&["deploy", app.to_str().unwrap()]).await;
         assert!(output.status.success(), "{name}: {}", text(&output.stderr));
         let stderr = text(&output.stderr);
@@ -361,7 +368,11 @@ async fn a_deploy_ends_saying_the_app_sleeps_when_idle_only_if_it_does() {
         // A new folder, since the deploy bound the first to that server.
         let dir = tempfile::tempdir().unwrap();
         let app = app_dir(&dir, name, &toml);
-        let server = Server::start(vec![personal_workspace(), no_logs(), started(done)]).await;
+        let mut replies = vec![personal_workspace(), no_logs(), started(done)];
+        if name == "plain" || name == "account-never" {
+            replies.push(reply(json!({"overrides":{"sleep":null,"sleep_after_seconds":null},"defaults":{"sleep":if sleeps {"auto"} else {"never"},"sleep_after_seconds":30},"effective":{"sleep":if sleeps {"auto"} else {"never"},"sleep_after_seconds":30},"worker":false})));
+        }
+        let server = Server::start(replies).await;
         let output = server
             .run(&["deploy", app.to_str().unwrap(), "--json"])
             .await;
