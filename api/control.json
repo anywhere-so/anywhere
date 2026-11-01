@@ -2944,7 +2944,7 @@
     },
     "/v1/apps/{app}/pause": {
       "post": {
-        "description": "Only the owner may pause it. A deploy under way is `app_busy`, an owner pause already set is `already_paused`, and no deployment is `app_not_deployed`.",
+        "description": "Only its owner may pause it, or for a team app its workspace owners and app managers. A deploy under way is `app_busy`, an owner pause already set is `already_paused`, and no deployment is `app_not_deployed`.",
         "operationId": "app_pause",
         "parameters": [
           {

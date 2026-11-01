@@ -85,7 +85,7 @@ anywhere apps access NAME restricted
 
 ## Pause and resume
 
-Only the owner can run `anywhere apps pause <app>` and `anywhere apps resume <app>`.
+Only the owner can run `anywhere apps pause <app>` and `anywhere apps resume <app>`, or for a team app its workspace owners and app managers.
 Both wait for an operation; `--json` returns its result, and `anywhere operations get <id> --wait` follows it later.
 Pause stops web and background apps, keeps their disks, and charges storage at the normal rate with no CPU or memory charge while stopped. A paused app still counts toward Free's app cap.
 Requests cannot wake it. Deploy and exec refuse with `app_paused` (not retryable): resume it first with `anywhere apps resume <app>`.
