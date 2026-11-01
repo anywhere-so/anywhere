@@ -66,7 +66,9 @@ An app is in use while it has an open request, WebSocket, `anywhere exec` or upl
 
 Presence preserves the app's Content-Security-Policy. Allow the same-origin `/_anywhere/presence.js` in `script-src` (or `script-src-elem`) and same-origin fetches in `connect-src`. With nonce-only policies, include `<script src="/_anywhere/presence.js" nonce="YOUR_RESPONSE_NONCE" defer></script>` yourself. Compressed, non-UTF-8, attachment or `Cache-Control: no-transform` pages aren't injected; include the script yourself if wanted. The first navigation still waits for a wake, and returning and clicking immediately may too.
 
-Any request or `anywhere exec` wakes it from a saved copy, usually in well under a second, with its memory and in-progress state kept. The request waits for the wake rather than failing. After its host reboots or gVisor is upgraded, it starts fresh instead, as after a restart; a browser page load meanwhile sees a short page with the app's icon and "Starting…" that reloads by itself. A request that still can't reach the app gets 503 `app_waking`, which is retryable: the app is waking, so retry in a few seconds.
+Any request or `anywhere exec` asks it to wake from its saved copy, with its memory and in-progress state kept. Wake time depends on the memory saved and the host's disk load; a larger app can take longer. A browser page waiting on a wake sees the app's icon and “Starting…”, reloading itself until ready. Other requests that still can't reach the app get 503 `app_waking`, which is retryable: nothing of the request reached the app, so retry in a few seconds. After the host reboots or gVisor is upgraded, the app starts fresh instead, as after a restart.
+
+Choose `sleep = "never"` when avoiding a wake delay matters more than idle savings.
 
 **Keep `auto` for** apps people or agents open and use: CRUD apps, dashboards, tools, sites and APIs. Asleep, they cost only disk.
 
