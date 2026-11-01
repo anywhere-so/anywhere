@@ -58,9 +58,7 @@ A failed acquisition means **do not start or accept the job**. HTTP 409
 `app_sleeping` means saving already began; retry acquisition before doing work.
 A failed/late renewal means the job may lose protection: stop or checkpoint safely
 and surface the failure. Release in `finally`, and surface release errors too.
-Abandoned leases expire; there is no indefinite keep-awake toggle. At most 1,024
-leases can coexist; 429 `lease_limit` is retryable after releasing one. An older
-helper returns 404; redeploy rather than treating that as success.
+Abandoned leases expire; there is no indefinite keep-awake toggle. An older helper returns 404; redeploy rather than treating that as success.
 
 A lease blocks idle and memory-pressure sleep. It does not protect against deploys,
 stops, crashes or host failure, and does not reserve resources. Store job progress
