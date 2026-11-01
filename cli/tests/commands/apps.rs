@@ -450,10 +450,10 @@ async fn a_delete_whose_operation_fails_says_why_and_names_the_operation() {
 }
 
 #[tokio::test]
-async fn pause_and_resume_follow_the_apply_operation_and_preserve_refusals() {
+async fn pause_and_resume_follow_their_operation_and_preserve_refusals() {
     for action in ["pause", "resume"] {
         let mut pending = operation("pending");
-        pending["kind"] = json!("usage_apply");
+        pending["kind"] = json!(format!("app_{action}"));
         let mut done = pending.clone();
         done["state"] = json!("succeeded");
         let server = Server::start(vec![
@@ -466,6 +466,7 @@ async fn pause_and_resume_follow_the_apply_operation_and_preserve_refusals() {
         .await;
         let output = server.run(&["--json", "apps", action, "dev/hello"]).await;
         assert_eq!(success(&output)["state"], "succeeded");
+        assert_eq!(success(&output)["kind"], format!("app_{action}"));
         assert_eq!(
             server.paths(),
             [

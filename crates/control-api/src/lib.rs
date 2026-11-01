@@ -730,8 +730,11 @@ pub enum OperationKind {
     /// Deletes an app; it succeeds once its host has stopped it and every
     /// gateway has dropped its address and shares.
     AppDelete,
-    /// Applies a pause or resume without changing the app's disk.
-    UsageApply,
+    /// Pauses an app: its host stops it and keeps its disk, and its address
+    /// shows a paused page.
+    AppPause,
+    /// Resumes a paused app, starting it again where its disk left off.
+    AppResume,
     Deploy,
     /// Sets one of an app's secrets, restarting the app if it's running.
     SecretSet,

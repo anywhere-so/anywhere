@@ -389,9 +389,16 @@
             "type": "string"
           },
           {
-            "description": "Applies a pause or resume without changing the app's disk.",
+            "description": "Pauses an app: its host stops it and keeps its disk, and its address shows a paused page.",
             "enum": [
-              "usage_apply"
+              "app_pause"
+            ],
+            "type": "string"
+          },
+          {
+            "description": "Resumes a paused app, starting it again where its disk left off.",
+            "enum": [
+              "app_resume"
             ],
             "type": "string"
           },
