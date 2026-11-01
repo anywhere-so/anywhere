@@ -346,7 +346,11 @@ pub async fn scope(
             (&cwd, app)
         }
         C::Apps {
-            command: Apps::Inspect { name } | Apps::Delete { name, .. },
+            command:
+                Apps::Inspect { name }
+                | Apps::Delete { name, .. }
+                | Apps::Pause { name }
+                | Apps::Resume { name },
         }
         | C::Pull { app: name, .. } => {
             let mut target = Some(name.clone());

@@ -25,6 +25,7 @@ mod logs;
 mod new;
 mod operations;
 mod output;
+mod pause;
 mod pull;
 mod retry;
 mod secrets;
@@ -227,6 +228,10 @@ enum Apps {
         /// The app: NAME, one of yours, or OWNER/NAME, one whose owner made you a developer.
         name: String,
     },
+    /// Stop one of your apps and keep its disk, charged at the normal storage rate.
+    Pause { name: String },
+    /// Resume one of your apps that you paused, if your account has usage available.
+    Resume { name: String },
     /// Delete one of your apps, and wait until nothing serves it: its address, its shares and its name go, and nothing restores it. At a terminal it asks you to type the app's name; elsewhere it needs --yes.
     Delete {
         /// The app's name. Only its owner deletes it.
@@ -616,6 +621,12 @@ async fn run(
         } => shares::remove(&app, &email, output)
             .await
             .map(Outcome::Data),
+        Command::Apps {
+            command: Apps::Pause { name },
+        } => pause::change(&name, true, output).await.map(Outcome::Data),
+        Command::Apps {
+            command: Apps::Resume { name },
+        } => pause::change(&name, false, output).await.map(Outcome::Data),
         Command::Apps {
             command: Apps::Delete { name, yes },
         } => delete::delete(&name, yes, output).await.map(Outcome::Data),

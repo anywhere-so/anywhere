@@ -448,3 +448,43 @@ async fn a_delete_whose_operation_fails_says_why_and_names_the_operation() {
     );
     assert_eq!(error["operation"], ID);
 }
+
+#[tokio::test]
+async fn pause_and_resume_follow_the_apply_operation_and_preserve_refusals() {
+    for action in ["pause", "resume"] {
+        let mut pending = operation("pending");
+        pending["kind"] = json!("usage_apply");
+        let mut done = pending.clone();
+        done["state"] = json!("succeeded");
+        let server = Server::start(vec![
+            Reply {
+                status: 202,
+                ..reply(pending)
+            },
+            reply(done),
+        ])
+        .await;
+        let output = server.run(&["--json", "apps", action, "dev/hello"]).await;
+        assert_eq!(success(&output)["state"], "succeeded");
+        assert_eq!(
+            server.paths(),
+            [
+                format!("POST /v1/apps/hello/{action}?owner=dev HTTP/1.1"),
+                format!("GET /v1/operations/{ID} HTTP/1.1")
+            ]
+        );
+        let server = Server::start(vec![Reply {
+            status: 409,
+            ..reply(json!({"code":"not_paused", "message":"Inspect the app", "retryable":false}))
+        }])
+        .await;
+        assert_eq!(
+            failure(
+                &server.run(&["--json", "apps", action, "hello"]).await,
+                "not_paused"
+            )["retryable"],
+            false
+        );
+        assert_eq!(server.paths().len(), 1);
+    }
+}
