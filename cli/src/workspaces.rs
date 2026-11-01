@@ -338,6 +338,17 @@ pub async fn scope(
             command:
                 Secrets::Set { target, .. } | Secrets::List { target } | Secrets::Unset { target, .. },
         } => (&cwd, &mut target.app),
+        C::Sleep(args) => {
+            if args.app.is_none() {
+                if workspace.is_some() || binding::read(&cwd)?.is_some() {
+                    return Err(argument(
+                        "account sleep defaults require an unbound folder without --workspace; name an app to change its override",
+                    ));
+                }
+                return Ok(());
+            }
+            (&cwd, &mut args.app)
+        }
         C::Usage { app, .. } => {
             // No app means workspace dollars; the dispatcher handles that explicitly.
             if app.is_none() {

@@ -31,6 +31,7 @@ mod secrets;
 mod settings;
 mod shares;
 mod skill;
+mod sleep;
 mod untar;
 mod update;
 mod upload;
@@ -64,6 +65,8 @@ struct Cli {
 enum Command {
     /// Show licenses, dependency notices and source links.
     Licenses,
+    /// Read or change account sleep defaults, or one app’s overrides.
+    Sleep(sleep::Args),
     /// Manage personal and team workspaces, memberships and project bindings.
     Workspaces {
         #[command(subcommand)]
@@ -546,6 +549,7 @@ async fn run(
         Command::Workspaces { command } => {
             workspaces::run(command, output).await.map(Outcome::Data)
         }
+        Command::Sleep(args) => sleep::run(args, output).await.map(Outcome::Data),
         Command::Licenses => Ok(Outcome::Data(ResultData::Licenses {
             text: concat!(
                 include_str!("../../LICENSE"),

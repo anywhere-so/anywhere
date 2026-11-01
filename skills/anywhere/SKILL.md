@@ -46,7 +46,6 @@ An app needs one execution mode. For a web app:
 
 ```toml
 title = "Notes"
-sleep = "auto"
 icon = "assets/icon.png"  # optional 512x512 PNG (<= 1 MiB)
 build = "npm ci"          # optional; runs on Linux at every deploy, without secrets
 
@@ -61,7 +60,7 @@ anywhere check ~/.anywhere/apps/notes
 anywhere deploy ~/.anywhere/apps/notes
 ```
 
-Web apps and static sites default to `sleep = "auto"`, suitable for most CRUD apps, dashboards and APIs. They sleep after about 30 idle seconds and pay only for disk while asleep. Use a [job lease](references/sleep.md#background-jobs) for finite background work; use `sleep = "never"` for bots, polling, schedules or avoiding wake delays. Workers never sleep. Read [sleep](references/sleep.md) before choosing, and explain the tradeoff to the user.
+Web apps and static sites inherit account sleep defaults: initially `auto`, 30 idle seconds. CRUD apps, dashboards and APIs usually suit auto; asleep, only disk is charged. Use `anywhere sleep` for defaults or `anywhere sleep APP` for overrides. Use a [job lease](references/sleep.md#background-jobs) for finite background work; use `sleep = "never"` for bots, polling, schedules or avoiding wake delays. Workers never sleep. Read [sleep](references/sleep.md) before choosing, and explain the tradeoff to the user.
 
 Deploy overwrites uploaded paths and deletes nothing. Deleted or renamed local files remain remotely. There is no rollback: failed uploads/builds can leave changed files, and the platform attempts to restart using the disk as it stands. Check logs and repair; do not assume the old app survived unchanged.
 
