@@ -62,11 +62,11 @@ sleep = "never"  # always running; pays for its memory all the time
 
 Left out, `sleep` is chosen at each deploy by the app's kind; an existing app takes `auto` at its next deploy. A worker has no address to wake it by, so `sleep = "auto"` with `worker` is refused with `sleep_needs_an_address`: omit it or use `never`.
 
-An app is in use while it has an open request, WebSocket, `anywhere exec` or upload, or used more than a trickle of CPU or network in the last few seconds. About 30 seconds after its last use it sleeps; an app woken soon after sleeping stays awake longer next time, up to a few minutes. The gateway adds a small presence script to ordinary HTML page loads. A visible top-level tab with input in the last minute keeps the app awake without requests to app code; hiding it cancels presence, and returning or new input requests a wake. An idle visible tab stops renewing, and the ordinary idle time follows the last presence stream. The app's own timers and reading logs or usage don't count.
+An app is in use while it has an open request, WebSocket, `anywhere exec`, upload or browser presence. CPU use and network bytes do not keep it awake. A finite background job can hold a renewable [keep-awake lease](sleep.md#background-jobs). About 30 seconds after its last use it sleeps; an app woken soon after sleeping stays awake longer next time, up to a few minutes. The gateway adds a small presence script to ordinary HTML page loads. A visible top-level tab with input in the last minute keeps the app awake without requests to app code; hiding it cancels presence, and returning or new input requests a wake. An idle visible tab stops renewing, and the ordinary idle time follows the last presence stream. The app's own timers and reading logs or usage don't count.
 
 Presence preserves the app's Content-Security-Policy. Allow the same-origin `/_anywhere/presence.js` in `script-src` (or `script-src-elem`) and same-origin fetches in `connect-src`. With nonce-only policies, include `<script src="/_anywhere/presence.js" nonce="YOUR_RESPONSE_NONCE" defer></script>` yourself. Compressed, non-UTF-8, attachment or `Cache-Control: no-transform` pages aren't injected; include the script yourself if wanted. The first navigation still waits for a wake, and returning and clicking immediately may too.
 
-Any request or `anywhere exec` asks it to wake from its saved copy, with its memory and in-progress state kept. Wake time depends on the memory saved and the host's disk load; a larger app can take longer. A browser page waiting on a wake sees the app's icon and “Starting…”, reloading itself until ready. Other requests that still can't reach the app get 503 `app_waking`, which is retryable: nothing of the request reached the app, so retry in a few seconds. After the host reboots or gVisor is upgraded, the app starts fresh instead, as after a restart.
+Any request or `anywhere exec` asks it to wake from its saved copy, with its memory and in-progress state kept. Wake time depends on the memory saved and the host's disk load; a larger app can take longer. A browser page waiting on a wake sees the app's icon and “Waking up…”, reloading itself until ready. Other requests that still can't reach the app get 503 `app_waking`, which is retryable: nothing of the request reached the app, so retry in a few seconds. After the host reboots or gVisor is upgraded, the app starts fresh instead, as after a restart.
 
 Choose `sleep = "never"` when avoiding a wake delay matters more than idle savings.
 
@@ -75,7 +75,9 @@ Choose `sleep = "never"` when avoiding a wake delay matters more than idle savin
 **Use `never` for** apps that must act when nobody is asking:
 - bots connected to Discord, Slack, Telegram or similar;
 - timers, cron libraries, reminders, digests, or polling another service;
-- work that carries on silently after a request ends.
+- autonomous work that must start without a request.
+
+Finite request-triggered background jobs can keep `auto` with a [job lease](sleep.md#background-jobs).
 
 **While an app sleeps:**
 - Nothing runs. Timers and background work pause; any that came due run once on wake.
