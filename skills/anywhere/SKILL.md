@@ -46,6 +46,7 @@ An app needs one execution mode. For a web app:
 
 ```toml
 title = "Notes"
+sleep = "auto"
 icon = "assets/icon.png"  # optional 512x512 PNG (<= 1 MiB)
 build = "npm ci"          # optional; runs on Linux at every deploy, without secrets
 
