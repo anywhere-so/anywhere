@@ -44,7 +44,7 @@ pub struct CliTargetPath {
 /// routes, requests and answers, the upload and exec streams, and what
 /// `app.toml` may hold. A change that breaks any of them for a CLI already
 /// installed raises it by one (the HTTP and streaming contracts).
-pub const CONTRACT: u32 = 8;
+pub const CONTRACT: u32 = 9;
 
 /// The code of the error a CLI on another contract gets.
 pub const CLI_OUTDATED: &str = "cli_outdated";

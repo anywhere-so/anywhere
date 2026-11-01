@@ -718,6 +718,8 @@ pub struct Warning {
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Deserialize, Serialize, JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum OperationKind {
+    /// Changes an email password and drains every previous credential.
+    PasswordReset,
     /// A workspace membership, invitation or access change, with its drain barrier.
     WorkspaceChange,
     /// Renames an account and releases its old username after gateway drain.
