@@ -60,7 +60,7 @@ anywhere check ~/.anywhere/apps/notes
 anywhere deploy ~/.anywhere/apps/notes
 ```
 
-Web apps and static sites default to `sleep = "auto"`: after about 30 idle seconds, compute stops and only disk is charged. CRUD apps, dashboards, tools and request-driven APIs usually fit this mode. Requests, WebSockets, exec and browser presence keep them awake; CPU use and outgoing network traffic do not. Returning to a tab requests a wake. Wake latency depends on the app and host. For finite work after a request returns, acquire a renewable [background-job lease](references/sleep.md) **before** accepting the job, renew while working, and release when done. Use `sleep = "never"` for continuous polling, bots, internal schedules, or when avoiding wake delay matters more than idle savings. Workers never sleep. Explain these choices to the user; do not promise a fixed saving or assume a sleeping app can run its own timers. Read [sleep](references/sleep.md) before choosing or adding background work.
+Web apps and static sites default to `sleep = "auto"`, suitable for most CRUD apps, dashboards and APIs. They sleep after about 30 idle seconds and pay only for disk while asleep. Use a [job lease](references/sleep.md#background-jobs) for finite background work; use `sleep = "never"` for bots, polling, schedules or avoiding wake delays. Workers never sleep. Read [sleep](references/sleep.md) before choosing, and explain the tradeoff to the user.
 
 Deploy overwrites uploaded paths and deletes nothing. Deleted or renamed local files remain remotely. There is no rollback: failed uploads/builds can leave changed files, and the platform attempts to restart using the disk as it stands. Check logs and repair; do not assume the old app survived unchanged.
 
