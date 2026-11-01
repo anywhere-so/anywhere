@@ -734,6 +734,11 @@ pub enum OperationKind {
     /// Deletes an app; it succeeds once its host has stopped it and every
     /// gateway has dropped its address and shares.
     AppDelete,
+    /// Pauses an app: its host stops it and keeps its disk, and its address
+    /// shows a paused page.
+    AppPause,
+    /// Resumes a paused app, starting it again where its disk left off.
+    AppResume,
     Deploy,
     /// Sets one of an app's secrets, restarting the app if it's running.
     SecretSet,
@@ -827,6 +832,16 @@ pub enum DiagnosticOutcome {
 #[serde(rename_all = "snake_case")]
 pub enum Paused {
     UsageLimit,
+    Owner,
+}
+
+impl Paused {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::UsageLimit => "usage_limit",
+            Self::Owner => "owner",
+        }
+    }
 }
 
 #[derive(Clone, Copy, Debug)]

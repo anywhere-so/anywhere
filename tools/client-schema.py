@@ -33,6 +33,8 @@ OPERATIONS = {
     'app_access_get',
     'app_access_set',
     'app_delete',
+    'app_pause',
+    'app_resume',
     'app_list',
     'app_identity',
     'app_logs',

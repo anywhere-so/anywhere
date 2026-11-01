@@ -61,6 +61,8 @@ pub fn longest(kind: &OperationKind) -> Duration {
         | OperationKind::ShareRemove
         | OperationKind::ShareChange
         | OperationKind::AppDelete
+        | OperationKind::AppPause
+        | OperationKind::AppResume
         | OperationKind::CredentialRevoke => crate::shares::CHANGE_DEADLINE,
     }
 }
@@ -182,6 +184,12 @@ pub fn check_failed(operation: &Operation) -> Result<(), CliError> {
                 diagnostic: None,
                 code: "share_change_failed_without_reason".to_owned(),
                 message: "the share change failed without a recorded reason; keep its operation ID and ask the operator to inspect it".to_owned(),
+                retryable: false,
+            }),
+            (None, OperationKind::AppPause | OperationKind::AppResume) => CliError::OperationFailed(crate::api::types::ErrorBody {
+                diagnostic: None,
+                code: "pause_failed_without_reason".to_owned(),
+                message: "the pause or resume failed without a recorded reason; keep its operation ID and ask the operator to inspect it".to_owned(),
                 retryable: false,
             }),
             (None, OperationKind::AppDelete) => CliError::OperationFailed(crate::api::types::ErrorBody {

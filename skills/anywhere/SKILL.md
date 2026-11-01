@@ -84,3 +84,5 @@ That direct check bypasses the gateway and does not prove browser access, sharin
 - For a shared app, keep it under `<owner>/<app>` and use `deploy DIR --app OWNER/NAME`. A bare name targets the user's own app.
 - Do not change limits, publish an app, upgrade plans or delete data to resolve a limit without the user's direction. Before granting developer access, explain that it permits root exec and access to the app's files and secrets.
 - Delete an app only when the user requests that specific app. Deletion is irreversible; management guidance explains retained data and erasure requests.
+
+Pause an app on purpose with `anywhere apps pause <app>`; resume it with `anywhere apps resume <app>`. Only its owner can do either, or for a team app its workspace owners and app managers. Pause keeps and charges its disk, blocks deploy and exec, and keeps it offline until resumed. See [managing apps](references/managing-apps.md#pause-and-resume).

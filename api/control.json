@@ -221,7 +221,8 @@
       "Paused": {
         "description": "Why the platform paused an app.",
         "enum": [
-          "usage_limit"
+          "usage_limit",
+          "owner"
         ],
         "type": "string"
       },
@@ -391,6 +392,20 @@
             "description": "Deletes an app; it succeeds once its host has stopped it and every gateway has dropped its address and shares.",
             "enum": [
               "app_delete"
+            ],
+            "type": "string"
+          },
+          {
+            "description": "Pauses an app: its host stops it and keeps its disk, and its address shows a paused page.",
+            "enum": [
+              "app_pause"
+            ],
+            "type": "string"
+          },
+          {
+            "description": "Resumes a paused app, starting it again where its disk left off.",
+            "enum": [
+              "app_resume"
             ],
             "type": "string"
           },
@@ -3002,6 +3017,96 @@
           }
         },
         "summary": "An app's output."
+      }
+    },
+    "/v1/apps/{app}/pause": {
+      "post": {
+        "description": "Only its owner may pause it, or for a team app its workspace owners and app managers. A deploy under way is `app_busy`, an owner pause already set is `already_paused`, and no deployment is `app_not_deployed`.",
+        "operationId": "app_pause",
+        "parameters": [
+          {
+            "description": "The app's name, which is its folder's name.",
+            "in": "path",
+            "name": "app",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "The username of the app's owner, for an app whose owner made you a developer. Without it, the app is yours.",
+            "in": "query",
+            "name": "owner",
+            "schema": {
+              "nullable": true,
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Operation"
+                }
+              }
+            },
+            "description": "successfully enqueued operation"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "summary": "Pauses one of your deployed apps, keeping its disk at the normal storage rate."
+      }
+    },
+    "/v1/apps/{app}/resume": {
+      "post": {
+        "description": "Enforced account exhaustion refuses with `usage_limit_reached`.",
+        "operationId": "app_resume",
+        "parameters": [
+          {
+            "description": "The app's name, which is its folder's name.",
+            "in": "path",
+            "name": "app",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "The username of the app's owner, for an app whose owner made you a developer. Without it, the app is yours.",
+            "in": "query",
+            "name": "owner",
+            "schema": {
+              "nullable": true,
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Operation"
+                }
+              }
+            },
+            "description": "successfully enqueued operation"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "summary": "Resumes one of your owner-paused apps. Otherwise it is `not_paused`."
       }
     },
     "/v1/apps/{app}/secrets": {
