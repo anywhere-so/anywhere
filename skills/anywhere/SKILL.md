@@ -15,7 +15,7 @@ Read only the references relevant to the request:
 - **Choose a team or project destination, invite people or manage team access:** [workspaces](references/workspaces.md). Use an explicit workspace before creating software; honor the project binding and never fall back to personal.
 - **Install, sign in or resolve credentials:** [setup](references/setup.md). Find the CLI with `command -v anywhere || ls ~/.local/bin/anywhere`; use the full path if needed. `anywhere apps list` checks sign-in. If missing, install with `curl -fsSL https://anywhere.so/install.sh | sh`. On a `cli_update_available` or `skill_updated` note, or a `cli_outdated` error, follow [setup](references/setup.md#staying-current): usually `anywhere update`, then reread this skill.
 - **Design, structure or build an app:** [building apps](references/building-apps.md): app standards (folder layout, SQLite, built-in identity headers, production processes, icons), `app.toml`, public container images, static sites and browser/network constraints.
-- **Create or polish a web UI or static site:** [UI and web design](references/ui-and-design.md): mobile-first responsive layout, overflow & zero-layout-shift rules, skeletons & the 4 data states (loading, empty, no-match, error), concentric surfaces and shadows, typography, tactile animations, accessible forms and interface critique.
+- **Create or polish a web UI or static site (REQUIRED for any frontend work):** [UI and web design](references/ui-and-design.md): drop-in `:root` CSS token system (warm light & stepped dark surfaces), copy-pasteable control recipes (zero-shift inset inputs, cap-trimmed badges, sliding segmented controls, shared-column list rows with instant-in/eased-out hover), Anti-Slop table, mobile-first (`375px` / `100dvh`) & zero-overflow rules, all 4 data states, zero-dependency CSS/DOM & Storyboard animations, and senior design critique.
 - **Deploy, pull, update or debug:** [deployment and debugging](references/deploying-and-debugging.md): local folder resolution, upload rules, `anywhere pull`, `anywhere exec`, logs, limits, operations and usage.
 - **Work on files, secrets, sharing or deletion:** [managing apps](references/managing-apps.md), reading the relevant section. It also covers the Drive and apps shared with the user.
 
@@ -38,7 +38,7 @@ Without a destination directory, `anywhere pull` writes into `./<app>` in the cu
 
 ## Build or update
 
-For a new app, read [building apps](references/building-apps.md), choose web, static, worker or image, and create its folder in `.anywhere/apps/<app>` or `~/.anywhere/apps/<app>`. Keep code in `/app` and mutable runtime state (SQLite databases, uploads) in `/app/data/` with `/data/` and `*.db*` in `.gitignore`. Use Anywhere's identity headers (`Anywhere-User-ID`, `Anywhere-User`, `Anywhere-Role`) instead of building custom login pages unless asked.
+For a new app, read [building apps](references/building-apps.md) (and [UI and web design](references/ui-and-design.md) before writing any HTML, CSS or frontend code), choose web, static, worker or image, and create its folder in `.anywhere/apps/<app>` or `~/.anywhere/apps/<app>`. Keep code in `/app` and mutable runtime state (SQLite databases, uploads) in `/app/data/` with `/data/` and `*.db*` in `.gitignore`. Use Anywhere's identity headers (`Anywhere-User-ID`, `Anywhere-User`, `Anywhere-Role`) instead of building custom login pages unless asked.
 
 For an existing app, inspect it first with `anywhere apps inspect NAME` to check its current limits and whether a newer deploy happened from another machine or developer before overwriting local files. If the source is only remote, pull a narrow path into the app's local folder: full `/app` folders can contain databases, large dependencies and links that pull refuses.
 
@@ -60,7 +60,7 @@ anywhere check ~/.anywhere/apps/notes
 anywhere deploy ~/.anywhere/apps/notes
 ```
 
-Web apps and static sites sleep when idle (`sleep = "auto"`, the default): about 30 seconds after the last request, WebSocket, exec or burst of work, nothing runs and only disk is charged, and the next request or `anywhere exec` wakes the app where it left off, usually in well under a second. A visible browser tab with recent input keeps it awake, and returning to a tab requests a wake (see the presence policy requirements in the sleep reference). Timers and background work pause while it sleeps, and outgoing connections close. Set top-level `sleep = "never"` for an app that must act when nobody is asking: chat bots, timers, cron libraries, reminders, polling, or work that carries on after a request ends. Workers never sleep. Read [sleep](references/building-apps.md#sleep) before choosing.
+Web apps and static sites inherit account sleep defaults: initially `auto`, 30 idle seconds. CRUD apps, dashboards and APIs usually suit auto; asleep, only disk is charged. Set account defaults with `anywhere sleep`; set app overrides in `app.toml` and deploy. `anywhere sleep APP` inspects effective settings. Use a [job lease](references/sleep.md#background-jobs) for finite background work; use `sleep = "never"` for bots, polling, schedules or avoiding wake delays. Workers never sleep. Read [sleep](references/sleep.md) before choosing, and explain the tradeoff to the user.
 
 Deploy overwrites uploaded paths and deletes nothing. Deleted or renamed local files remain remotely. There is no rollback: failed uploads/builds can leave changed files, and the platform attempts to restart using the disk as it stands. Check logs and repair; do not assume the old app survived unchanged.
 
@@ -84,3 +84,5 @@ That direct check bypasses the gateway and does not prove browser access, sharin
 - For a shared app, keep it under `<owner>/<app>` and use `deploy DIR --app OWNER/NAME`. A bare name targets the user's own app.
 - Do not change limits, publish an app, upgrade plans or delete data to resolve a limit without the user's direction. Before granting developer access, explain that it permits root exec and access to the app's files and secrets.
 - Delete an app only when the user requests that specific app. Deletion is irreversible; management guidance explains retained data and erasure requests.
+
+Pause an app on purpose with `anywhere apps pause <app>`; resume it with `anywhere apps resume <app>`. Only its owner can do either, or for a team app its workspace owners and app managers. Pause keeps and charges its disk, blocks deploy and exec, and keeps it offline until resumed. See [managing apps](references/managing-apps.md#pause-and-resume).

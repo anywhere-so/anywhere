@@ -10,6 +10,9 @@ import sys
 
 OPERATIONS = {
     'account_usage',
+    'sleep_defaults_view',
+    'sleep_defaults_set',
+    'app_sleep_view',
     'workspace_list',
     'workspace_usage',
     'workspace_create',
@@ -29,6 +32,8 @@ OPERATIONS = {
     'app_access_get',
     'app_access_set',
     'app_delete',
+    'app_pause',
+    'app_resume',
     'app_list',
     'app_identity',
     'app_logs',

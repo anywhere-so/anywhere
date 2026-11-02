@@ -23,15 +23,13 @@ Design software to fit a persistent Linux sandbox with built-in sign-in:
 
 ## Web UI and UX standards
 
-Many people open and share Anywhere apps on their phones as well as laptops. Read [UI and web design](ui-and-design.md) whenever creating or updating a web app or static site so the interface is mobile-ready, tactile and accessible on the first deploy:
+Many people open and share Anywhere apps on their phones as well as laptops. **Read [UI and web design](ui-and-design.md) before writing any HTML, CSS or frontend code** so the interface is mobile-ready, tactile and free of AI slop on the first deploy:
 
-- **Mobile-first, responsive layout (375px to desktop):** Include `<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">` (never disable zoom with `maximum-scale=1` or `user-scalable=no`). Design for a `375px` phone viewport first and scale up with fluid grids (`repeat(auto-fit, minmax(min(100%, 280px), 1fr))`) or `@media (min-width: 768px)`. Never cause horizontal page scroll: collapse desktop sidebars and multi-button toolbars into a compact header, drawer (`overscroll-behavior: contain`) or bottom bar on narrow screens, and wrap wide tables in `overflow-x: auto` containers or stack rows as cards. Use `100dvh` instead of `100vh` so mobile browser chrome never clips bottom controls, pad fixed bars with `env(safe-area-inset-bottom)` / `env(safe-area-inset-top)`, and set `font-size: 16px` (`1rem`) or larger on all `<input>`, `<textarea>` and `<select>` elements so iOS Safari does not auto-zoom on focus. Never hide edit/delete actions behind `:hover` alone—touch screens have no hover.
-- **Zero overflow, zero layout shift, and all 4 data states:** Put `min-width: 0` on flex children, `minmax(0, 1fr)` on grid tracks, and `overflow-wrap: anywhere` on user text/URLs/IDs so long strings never break the layout. Cap modals/drawers (`max-height: calc(100dvh - 2rem)`) with internal `overflow-y: auto` so action buttons never get pushed off-screen. Set `scrollbar-gutter: stable`, keep button widths stable during `"Saving…"`, and reserve dimensions (`aspect-ratio` or `min-height`) for images/charts. Embed initial data on first paint when possible, or use geometry-matched skeletons (`0px` jump when data arrives) and keep existing rows visible while filtering/searching. Always build all 4 view states: **Loading** (skeleton), **Empty data** (explanation + primary create CTA), **Empty filter/search** (`"Clear filters"` button), and **Error** (message + `"Retry"` button).
-- **One clear focal point and progressive disclosure:** Give every screen a single primary visual entry point. Do not make sidebars, stat cards, toolbars and tables compete at equal weight. Keep secondary controls in drawers, menus or expandable sections rather than crowding the main view.
-- **Surfaces, concentric radii and subtle depth:** Stick to one neutral surface palette and one semantic accent color. Set `color-scheme` on `<html>` and `<meta name="theme-color">` to match the page background. When nesting rounded elements within `24px` of padding, calculate `outerRadius = innerRadius + padding` (for example `16px` outer card with `8px` padding and `8px` inner button). Prefer layered transparent `box-shadow` (`0 0 0 1px rgba(0,0,0,0.06), 0 1px 2px -1px rgba(0,0,0,0.06), 0 2px 4px rgba(0,0,0,0.04)` in light mode; `0 0 0 1px rgba(255,255,255,0.08)` in dark mode) for card/button elevation, and keep `1px` borders for dividers. Give images an inset `1px` neutral outline (`rgba(0,0,0,0.1)` light, `rgba(255,255,255,0.1)` dark) and explicit `width`/`height`.
-- **Typography and content resilience:** Apply `-webkit-font-smoothing: antialiased` on `html`, `text-wrap: balance` on headings (`h1`–`h3`), and `text-wrap: pretty` on body copy and descriptions. Use `font-variant-numeric: tabular-nums` on counters, prices, timestamps and numeric columns so digits align without layout shift. Set `min-width: 0` on flex/grid children and truncate or wrap long user strings, filenames and URLs so they never break the layout.
-- **Tactile, interruptible interactions:** Use CSS `transition` on explicit compositor properties (`transform`, `opacity`, `box-shadow`—never `transition: all`) so state changes can be interrupted mid-animation. Add subtle press feedback (`transform: scale(0.96)` on `:active`) to buttons, gate hover styles behind `@media (hover: hover)`, optically center asymmetric icons, and respect `@media (prefers-reduced-motion: reduce)`.
-- **Accessible controls, forms and URL state:** Use `<button>` for actions and `<a href>` for navigation (never `<div onClick>`), with at least a `44×44px` touch target (`touch-action: manipulation`), `:focus-visible` rings (never `outline: none` without a replacement), and `aria-label` on icon-only buttons. Avoid `autoFocus` on mobile so the virtual keyboard does not cover the screen on load. Pair every form input with a `<label>`, proper `type`/`inputmode`/`autocomplete`, inline validation errors, and a pending label (`"Saving…"`) during requests; never block paste. Require confirmation or undo for destructive actions, and reflect active tabs, filters or search queries in the URL so shared Anywhere links open the same state.
+1. **Start with the drop-in `:root` CSS token system ([Section 2](ui-and-design.md#2-drop-in-css-token-system-light--dark)):** Warm paper-neutral light surfaces (`#f6f5f4` canvas, `#ffffff` cards) and stepped-surface dark mode (`#111113` → `#18181b` → `#232328`), opaque `--icon` tokens (so SVG strokes never double-darken), `color-mix` status/accent pills, and layered `--shadow-card` / `--shadow-float` elevation.
+2. **Use the copy-pasteable control recipes ([Section 3](ui-and-design.md#3-copy-pasteable-css-control-recipes--surface-physics)):** Inputs with zero-shift `inset` shadow focus rings (`16px` on mobile), tactile buttons (`scale: 0.96` on `:active`, `.btn-stack` width lock for `"Saving…"`, optical icon padding), pills with `text-box: trim-both cap alphabetic`, sliding segmented controls, and shared-column CSS Grid list rows with instant-in (`0s`) / eased-out (`150ms`) hover.
+3. **Follow the Anti-Slop table ([Section 1](ui-and-design.md#1-anti-slop-rules-what-makes-an-interface-look-crafted-vs-generated)):** Never open an app with 4 equal bordered stat cards, never use purple/neon glow slop, never use tracked ALL-CAPS everywhere, never use emoji or hand-drawn SVG icons, never invent a letter-in-a-colored-square logo, and never leave `1–3px` near-tangent gaps.
+4. **Mobile-first (`375px`), zero overflow, zero layout shift & all 4 states ([Section 4](ui-and-design.md#4-mobile-first-375px-zero-overflow-zero-layout-shift--all-4-states)):** Use `100dvh`, `min-width: 0` / `minmax(0, 1fr)`, bounded modals (`max-height: calc(100dvh - 2rem)`), initial data injection on first paint (or varied-width `60%`/`45%`/`70%`/`52%` skeletons), and explicitly build all 4 states (**Loading**, **Empty DB**, **Empty Search/Filter**, **Error**).
+5. **Choreograph animations & run the Senior Design Critique ([Sections 6 & 8](ui-and-design.md#6-animations-choreography--the-storyboard-pattern)):** Use `.icon-swap` for stateful icons, `@starting-style` + `data-closing="true"` for modals/toasts, `data-entering="true"` for newly inserted rows, in-place DOM bar morphing, and verify at `1280×800` and `375×812` before finishing.
 
 ## app.toml
 
@@ -57,34 +55,23 @@ A combined web/worker app still has one platform command. For example, `web = "s
 
 ## Sleep
 
-```toml
-sleep = "auto"   # default for apps with an address: sleeps when idle, wakes on the next request
-sleep = "never"  # always running; pays for its memory all the time
+Web apps and static sites inherit account sleep defaults; workers stay awake.
+See [sleep](sleep.md) for mode selection, idle rules and background-job leases.
+
+### Browser presence
+
+A visible tab with input in the last minute keeps the app awake; returning wakes
+it. The gateway injects `/_anywhere/presence.js` into ordinary HTML.
+
+CSP must allow that script and same-origin `connect-src`. For nonce-only policies,
+include it yourself:
+
+```html
+<script src="/_anywhere/presence.js" nonce="YOUR_RESPONSE_NONCE" defer></script>
 ```
 
-Left out, `sleep` is chosen at each deploy by the app's kind; an existing app takes `auto` at its next deploy. A worker has no address to wake it by, so `sleep = "auto"` with `worker` is refused with `sleep_needs_an_address`: omit it or use `never`.
-
-An app is in use while it has an open request, WebSocket, `anywhere exec` or upload, or used more than a trickle of CPU or network in the last few seconds. About 30 seconds after its last use it sleeps; an app woken soon after sleeping stays awake longer next time, up to a few minutes. The gateway adds a small presence script to ordinary HTML page loads. A visible top-level tab with input in the last minute keeps the app awake without requests to app code; hiding it cancels presence, and returning or new input requests a wake. An idle visible tab stops renewing, and the ordinary idle time follows the last presence stream. The app's own timers and reading logs or usage don't count.
-
-Presence preserves the app's Content-Security-Policy. Allow the same-origin `/_anywhere/presence.js` in `script-src` (or `script-src-elem`) and same-origin fetches in `connect-src`. With nonce-only policies, include `<script src="/_anywhere/presence.js" nonce="YOUR_RESPONSE_NONCE" defer></script>` yourself. Compressed, non-UTF-8, attachment or `Cache-Control: no-transform` pages aren't injected; include the script yourself if wanted. The first navigation still waits for a wake, and returning and clicking immediately may too.
-
-Any request or `anywhere exec` wakes it from a saved copy, usually in well under a second, with its memory and in-progress state kept. The request waits for the wake rather than failing. After its host reboots or gVisor is upgraded, it starts fresh instead, as after a restart; a browser page load meanwhile sees a short page with the app's icon and "Starting…" that reloads by itself. A request that still can't reach the app gets 503 `app_waking`, which is retryable: the app is waking, so retry in a few seconds.
-
-**Keep `auto` for** apps people or agents open and use: CRUD apps, dashboards, tools, sites and APIs. Asleep, they cost only disk.
-
-**Use `never` for** apps that must act when nobody is asking:
-- bots connected to Discord, Slack, Telegram or similar;
-- timers, cron libraries, reminders, digests, or polling another service;
-- work that carries on silently after a request ends.
-
-**While an app sleeps:**
-- Nothing runs. Timers and background work pause; any that came due run once on wake.
-- Outgoing connections, such as to databases or other services, close. Reconnect on error; most libraries do.
-- The clock jumps forward on wake.
-
-To sleep well, keep anything that matters on disk (such as SQLite), not only in memory; reconnect when a call fails; and finish work before responding, or stream while working.
-
-**How to tell:** `anywhere apps list` shows `asleep`, which is healthy. `anywhere logs` shows `went to sleep` and `woke up` lines. `anywhere usage NAME` reports `slept_with_connections` when the app went to sleep holding outgoing connections, the sign of a bot: set `sleep = "never"` if it must keep them. A deploy of an app that sleeps ends with a `note:` saying so; with `--json`, the deploy result's `sleep` is `auto` or `never`. A wake that failed shows in `anywhere logs` as `couldn't wake from its saved copy; the next request starts it fresh`, and the request that hit it got 503 `sandbox_unavailable`, which is retryable: retry it, and the app starts fresh.
+Compressed, non-UTF-8, attachment and `Cache-Control: no-transform` responses are
+not injected. Include the script yourself if needed.
 
 ## Runtime and persistence
 

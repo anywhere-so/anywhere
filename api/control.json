@@ -221,7 +221,8 @@
       "Paused": {
         "description": "Why the platform paused an app.",
         "enum": [
-          "usage_limit"
+          "usage_limit",
+          "owner"
         ],
         "type": "string"
       },
@@ -353,9 +354,9 @@
             "type": "string"
           },
           {
-            "description": "Changes an email password and drains every previous credential.",
+            "description": "Changes sleep settings without restarting apps.",
             "enum": [
-              "password_reset"
+              "sleep_change"
             ],
             "type": "string"
           },
@@ -391,6 +392,20 @@
             "description": "Deletes an app; it succeeds once its host has stopped it and every gateway has dropped its address and shares.",
             "enum": [
               "app_delete"
+            ],
+            "type": "string"
+          },
+          {
+            "description": "Pauses an app: its host stops it and keeps its disk, and its address shows a paused page.",
+            "enum": [
+              "app_pause"
+            ],
+            "type": "string"
+          },
+          {
+            "description": "Resumes a paused app, starting it again where its disk left off.",
+            "enum": [
+              "app_resume"
             ],
             "type": "string"
           },
@@ -732,8 +747,15 @@
                 "$ref": "#/components/schemas/Sleep"
               }
             ],
-            "description": "Whether the app sleeps when nobody uses it: `\"auto\"`, so it's saved to disk once idle and woken by its next request or `anywhere exec`, or `\"never\"`. Left out, the platform chooses by the kind of app: `\"auto\"` for a web app or static site, `\"never\"` for a background app, which may not sleep.",
+            "description": "Whether the app sleeps when nobody uses it: `\"auto\"`, so it's saved to disk once idle and woken by its next request or `anywhere exec`, or `\"never\"`. Omitted values inherit the account default. Workers never sleep.",
             "nullable": true
+          },
+          "sleep_after_seconds": {
+            "description": "Idle seconds before sleep; omitted values inherit the account default.",
+            "format": "uint32",
+            "minimum": 0,
+            "nullable": true,
+            "type": "integer"
           },
           "start_timeout": {
             "description": "How many seconds a web app gets to start listening on its port, from 1 to 1200, whenever a deploy or a secret change starts it: 30 if it's left out. Restarts after a crash wait for nothing.",
@@ -1016,6 +1038,69 @@
         "required": [
           "email"
         ],
+        "type": "object"
+      },
+      "AppSleepSettings": {
+        "properties": {
+          "defaults": {
+            "$ref": "#/components/schemas/SleepSettings"
+          },
+          "effective": {
+            "$ref": "#/components/schemas/SleepSettings"
+          },
+          "overrides": {
+            "$ref": "#/components/schemas/SleepOverrides"
+          },
+          "worker": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "defaults",
+          "effective",
+          "overrides",
+          "worker"
+        ],
+        "type": "object"
+      },
+      "SleepSettings": {
+        "additionalProperties": false,
+        "description": "Account defaults. Workers always stay awake.",
+        "properties": {
+          "sleep": {
+            "$ref": "#/components/schemas/Sleep"
+          },
+          "sleep_after_seconds": {
+            "format": "uint32",
+            "minimum": 0,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "sleep",
+          "sleep_after_seconds"
+        ],
+        "type": "object"
+      },
+      "SleepOverrides": {
+        "additionalProperties": false,
+        "description": "Deployed app.toml fields; omitted fields inherit the account default.",
+        "properties": {
+          "sleep": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/Sleep"
+              }
+            ],
+            "nullable": true
+          },
+          "sleep_after_seconds": {
+            "format": "uint32",
+            "minimum": 0,
+            "nullable": true,
+            "type": "integer"
+          }
+        },
         "type": "object"
       },
       "TicketRequest": {
@@ -2549,7 +2634,7 @@
     }
   },
   "info": {
-    "description": "Contract 9. The `anywhere` CLI says so in every request's User-Agent, `anywhere/<version> (contract 9)`, and the gateway refuses a CLI built for another contract, or one from before them (`anywhere/<version>` alone), with 400 `cli_outdated` before the request reaches this API, whatever its route or body. Its message says how to install the CLI this platform serves. Other clients are told nothing.",
+    "description": "Contract 8. The `anywhere` CLI says so in every request's User-Agent, `anywhere/<version> (contract 8)`, and the gateway refuses a CLI built for another contract, or one from before them (`anywhere/<version>` alone), with 400 `cli_outdated` before the request reaches this API, whatever its route or body. Its message says how to install the CLI this platform serves. Other clients are told nothing.",
     "title": "Control API",
     "version": "0.1.0"
   },
@@ -2934,6 +3019,96 @@
         "summary": "An app's output."
       }
     },
+    "/v1/apps/{app}/pause": {
+      "post": {
+        "description": "Only its owner may pause it, or for a team app its workspace owners and app managers. A deploy under way is `app_busy`, an owner pause already set is `already_paused`, and no deployment is `app_not_deployed`.",
+        "operationId": "app_pause",
+        "parameters": [
+          {
+            "description": "The app's name, which is its folder's name.",
+            "in": "path",
+            "name": "app",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "The username of the app's owner, for an app whose owner made you a developer. Without it, the app is yours.",
+            "in": "query",
+            "name": "owner",
+            "schema": {
+              "nullable": true,
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Operation"
+                }
+              }
+            },
+            "description": "successfully enqueued operation"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "summary": "Pauses one of your deployed apps, keeping its disk at the normal storage rate."
+      }
+    },
+    "/v1/apps/{app}/resume": {
+      "post": {
+        "description": "Enforced account exhaustion refuses with `usage_limit_reached`.",
+        "operationId": "app_resume",
+        "parameters": [
+          {
+            "description": "The app's name, which is its folder's name.",
+            "in": "path",
+            "name": "app",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "The username of the app's owner, for an app whose owner made you a developer. Without it, the app is yours.",
+            "in": "query",
+            "name": "owner",
+            "schema": {
+              "nullable": true,
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Operation"
+                }
+              }
+            },
+            "description": "successfully enqueued operation"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "summary": "Resumes one of your owner-paused apps. Otherwise it is `not_paused`."
+      }
+    },
     "/v1/apps/{app}/secrets": {
       "get": {
         "operationId": "secret_list",
@@ -3273,6 +3448,49 @@
         "summary": "Stops sharing one of your apps with an email."
       }
     },
+    "/v1/apps/{app}/sleep": {
+      "get": {
+        "operationId": "app_sleep_view",
+        "parameters": [
+          {
+            "description": "The app's name, which is its folder's name.",
+            "in": "path",
+            "name": "app",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "The username of the app's owner, for an app whose owner made you a developer. Without it, the app is yours.",
+            "in": "query",
+            "name": "owner",
+            "schema": {
+              "nullable": true,
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppSleepSettings"
+                }
+              }
+            },
+            "description": "successful operation"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
     "/v1/apps/{app}/tickets": {
       "post": {
         "description": "The app is yours, or one you're a developer of. For `exec`, it opens a WebSocket to run a command in the app's running sandbox (`wss://<platform>/v1/apps/{address}/exec`, with the app's `address` that the answer gives, and the ticket in an `Anywhere-Ticket` header), and lasts 60 seconds. It works only on requests that sign in as this one did, with the same bearer token, and returns no operation. A developer's works only while they still are one.",
@@ -3554,6 +3772,61 @@
           }
         },
         "summary": "The apps others have shared with you, by owner and name."
+      }
+    },
+    "/v1/sleep": {
+      "get": {
+        "operationId": "sleep_defaults_view",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SleepSettings"
+                }
+              }
+            },
+            "description": "successful operation"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "summary": "Account sleep defaults. Changes apply to inheriting apps without restarting them."
+      },
+      "put": {
+        "operationId": "sleep_defaults_set",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SleepSettings"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Operation"
+                }
+              }
+            },
+            "description": "successfully enqueued operation"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
       }
     },
     "/v1/usage": {

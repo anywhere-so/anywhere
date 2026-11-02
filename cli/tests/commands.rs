@@ -36,6 +36,8 @@ mod secrets;
 mod shares;
 #[path = "commands/skill.rs"]
 mod skill;
+#[path = "commands/sleep.rs"]
+mod sleep;
 #[path = "commands/token.rs"]
 mod token;
 #[path = "commands/update.rs"]

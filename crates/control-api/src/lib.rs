@@ -15,8 +15,10 @@ mod cli_contract;
 mod cli_login;
 mod follow;
 pub mod plans;
+mod sleep;
 mod usage;
 mod workspaces;
+pub use sleep::*;
 /// The most a deploy's request may be, as JSON: room for any app's list of
 /// files, while bounding what one deploy makes the control plane read before it
 /// checks the list. The CLI checks its request against it before sending, and
@@ -720,6 +722,8 @@ pub struct Warning {
 pub enum OperationKind {
     /// Changes an email password and drains every previous credential.
     PasswordReset,
+    /// Changes sleep settings without restarting apps.
+    SleepChange,
     /// A workspace membership, invitation or access change, with its drain barrier.
     WorkspaceChange,
     /// Renames an account and releases its old username after gateway drain.
@@ -732,6 +736,11 @@ pub enum OperationKind {
     /// Deletes an app; it succeeds once its host has stopped it and every
     /// gateway has dropped its address and shares.
     AppDelete,
+    /// Pauses an app: its host stops it and keeps its disk, and its address
+    /// shows a paused page.
+    AppPause,
+    /// Resumes a paused app, starting it again where its disk left off.
+    AppResume,
     Deploy,
     /// Sets one of an app's secrets, restarting the app if it's running.
     SecretSet,
@@ -825,6 +834,16 @@ pub enum DiagnosticOutcome {
 #[serde(rename_all = "snake_case")]
 pub enum Paused {
     UsageLimit,
+    Owner,
+}
+
+impl Paused {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::UsageLimit => "usage_limit",
+            Self::Owner => "owner",
+        }
+    }
 }
 
 #[derive(Clone, Copy, Debug)]
