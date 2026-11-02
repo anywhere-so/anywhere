@@ -283,7 +283,8 @@ impl Output {
             eprintln!(
                 "{}",
                 json!({"event":"error", "code":error.code(), "message":error.to_string(),
-                "retryable":!self.starts_deploy && error.is_temporary(), "operation":self.operation, "diagnostic":diagnostic})
+                "retryable":error.is_temporary() && (!self.starts_deploy
+                    || (self.operation.is_none() && matches!(error, CliError::Api(body) if body.code == "host_starting"))), "operation":self.operation, "diagnostic":diagnostic})
             );
         } else {
             match error {

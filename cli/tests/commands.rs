@@ -459,3 +459,45 @@ async fn licenses_are_available_offline_in_text_and_json() {
         assert!(output.stderr.is_empty());
     }
 }
+
+#[tokio::test]
+async fn only_a_known_preacceptance_capacity_refusal_allows_a_deploy_retry() {
+    let dir = tempfile::tempdir().unwrap();
+    std::fs::write(dir.path().join("app.toml"), TOML).unwrap();
+    for (code, retryable) in [("host_starting", true), ("cloud_unavailable", false)] {
+        let server = Server::start(vec![
+            Reply {
+                status: 404,
+                ..reply(json!({"code":"no_such_app","message":"no app yet","retryable":false}))
+            },
+            Reply {
+                status: 503,
+                ..reply(
+                    json!({"code":code,"message":"retry after capacity opens","retryable":true}),
+                )
+            },
+        ])
+        .await;
+        let output = server
+            .run(&[
+                "--json",
+                "deploy",
+                dir.path().to_str().unwrap(),
+                "--app",
+                "dev/hello",
+            ])
+            .await;
+        let error = failure(&output, code);
+        assert_eq!(error["retryable"], retryable);
+        assert!(error["operation"].is_null());
+        assert_eq!(
+            server
+                .paths()
+                .iter()
+                .filter(|p| p.starts_with("POST "))
+                .count(),
+            1
+        );
+        assert!(!dir.path().join(".anywhere/project.json").exists());
+    }
+}

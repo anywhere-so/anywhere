@@ -22,6 +22,8 @@ Deploy stops the app, writes uploaded files into `/app`, runs the build and atte
 
 The app's address answers errors while it is stopped for deployment. Web readiness requires a listener on `0.0.0.0:$PORT` within `start_timeout` (default 30 seconds); a worker must remain running for 3 seconds. Successful text output is the returned URL, or `APP runs in the background, with no web address`; for an app that sleeps when idle, a last `note:` line on stderr says so. Progress, operation ID and live deploy/app output go to stderr, including image layers and startup builds. `deploy_logs_unavailable` warns if output following failed; the operation still determines success. Logs resume after disconnect, with `resume_lost` if the host restarted and retained output is replayed.
 
+`host_starting` with no operation ID means a new app was refused before deployment while capacity starts. Wait about a minute and retry that deploy. Once an operation ID exists, inspect it before repeating the change.
+
 Only one deploy per app runs at a time. `app_busy` means inspect the current operation and wait; a later accepted deploy overwrites the paths it uploads.
 
 There is no rollback or version history. A failed upload/build can leave partial changes. The platform attempts to restart using the current disk; the process may remain crashing or fail to start. Inspect the error and logs before repairing:
