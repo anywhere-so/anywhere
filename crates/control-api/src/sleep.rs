@@ -19,7 +19,7 @@ impl Default for SleepSettings {
     }
 }
 
-/// Omitted fields inherit the account default. PUT replaces both overrides.
+/// Deployed app.toml fields; omitted fields inherit the account default.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Deserialize, Serialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct SleepOverrides {

@@ -1084,7 +1084,7 @@
       },
       "SleepOverrides": {
         "additionalProperties": false,
-        "description": "Omitted fields inherit the account default. PUT replaces both overrides.",
+        "description": "Deployed app.toml fields; omitted fields inherit the account default.",
         "properties": {
           "sleep": {
             "allOf": [
@@ -3489,58 +3489,6 @@
             "$ref": "#/components/responses/Error"
           }
         }
-      },
-      "put": {
-        "operationId": "app_sleep_set",
-        "parameters": [
-          {
-            "description": "The app's name, which is its folder's name.",
-            "in": "path",
-            "name": "app",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "description": "The username of the app's owner, for an app whose owner made you a developer. Without it, the app is yours.",
-            "in": "query",
-            "name": "owner",
-            "schema": {
-              "nullable": true,
-              "type": "string"
-            }
-          }
-        ],
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/SleepOverrides"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "202": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Operation"
-                }
-              }
-            },
-            "description": "successfully enqueued operation"
-          },
-          "4XX": {
-            "$ref": "#/components/responses/Error"
-          },
-          "5XX": {
-            "$ref": "#/components/responses/Error"
-          }
-        },
-        "summary": "Replaces both overrides; null fields inherit the account default."
       }
     },
     "/v1/apps/{app}/tickets": {

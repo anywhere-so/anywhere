@@ -12,21 +12,20 @@ Workers never sleep. Let the user choose.
 
 Account → Sleep defaults controls mode and idle timeout (initially `auto`, 30 seconds).
 Apps inherit omitted settings; changes apply without restarting them.
-App → Sleep changes one app. A deploy replaces its overrides from `app.toml`:
+Set app overrides in `app.toml` and deploy:
 
 ```toml
 sleep = "auto"
 sleep_after_seconds = 120
 ```
 
-Omit either field to inherit it. Existing auto apps initially inherit; existing
-always-on apps keep `never`.
+Omit either field to inherit it. Configuration shows each effective value and its
+source. Existing app settings stay in effect until the next deploy.
 
 ```sh
 anywhere sleep                         # read account defaults
 anywhere sleep --after 60              # change account timeout
-anywhere sleep notes --mode never      # override one app
-anywhere sleep notes --inherit         # clear both overrides
+anywhere sleep notes                   # inspect effective values and overrides
 ```
 
 An idle timeout is a base; presence and job leases still keep apps awake.

@@ -30,26 +30,19 @@ async fn account_timeout_update_preserves_mode_and_waits_for_application() {
 }
 
 #[tokio::test]
-async fn clearing_an_app_override_targets_its_named_owner_and_sends_nulls() {
-    let server = Server::start(vec![
-        reply(app_settings()),
-        Reply {
-            status: 202,
-            ..reply(changed())
-        },
-        reply(changed()),
-    ])
-    .await;
-    let output = server
-        .run(&["--json", "sleep", "alice/hello", "--inherit"])
-        .await;
-    assert_eq!(success(&output)["state"], "succeeded");
-    assert_eq!(
-        server.bodies(),
-        vec![json!({"sleep":null,"sleep_after_seconds":null})]
-    );
+async fn app_sleep_is_read_only_and_points_edits_to_app_toml() {
+    let server = Server::start(vec![reply(app_settings())]).await;
+    let output = server.run(&["--json", "sleep", "alice/hello"]).await;
+    assert_eq!(success(&output)["effective"]["sleep"], "never");
     assert!(server.paths()[0].starts_with("GET /v1/apps/hello/sleep?owner=alice "));
-    assert!(server.paths()[1].starts_with("PUT /v1/apps/hello/sleep?owner=alice "));
+    let before = server.paths().len();
+    let output = server
+        .run(&["--json", "sleep", "alice/hello", "--mode", "auto"])
+        .await;
+    let error = failure(&output, "argument_invalid");
+    assert!(error.to_string().contains("app.toml"));
+    assert_eq!(server.paths().len(), before);
+    assert!(server.bodies().is_empty());
 }
 
 #[tokio::test]
