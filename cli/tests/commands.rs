@@ -482,7 +482,7 @@ async fn capacity_preparation_is_visible_and_continues_the_same_deploy() {
         assert!(output.status.success(), "{}", text(&output.stderr));
         let progress = text(&output.stderr);
         assert!(progress.contains("Preparing your app"), "{progress}");
-        assert!(progress.contains("1–2 minutes"), "{progress}");
+        assert!(progress.contains("1–5 minutes"), "{progress}");
         assert!(
             !progress.contains("\x1b"),
             "redirected output must not contain terminal animation"

@@ -16,10 +16,11 @@ use crate::error::CliError;
 use crate::output::Output;
 
 // User patience, separate from the accepted deploy's upload/build deadline.
-const MAX_WAIT: Duration = Duration::from_secs(5 * 60);
-const ESTIMATE: Duration = Duration::from_secs(2 * 60);
+const MAX_WAIT: Duration = Duration::from_secs(10 * 60);
+const ESTIMATE: Duration = Duration::from_secs(5 * 60);
 const RETRY_AFTER: Duration = Duration::from_secs(5);
-const MESSAGE: &str = "Preparing your app. Starting more capacity; allow about 1–2 minutes. Deployment will continue automatically.";
+const MESSAGE: &str =
+    "Preparing your app. Allow about 1–5 minutes; deployment will continue automatically.";
 const SLOW: &str = "This is taking longer than expected. Still preparing your app.";
 
 pub(super) async fn create(
