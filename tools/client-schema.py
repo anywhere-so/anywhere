@@ -13,7 +13,6 @@ OPERATIONS = {
     'sleep_defaults_view',
     'sleep_defaults_set',
     'app_sleep_view',
-    'app_sleep_set',
     'workspace_list',
     'workspace_usage',
     'workspace_create',

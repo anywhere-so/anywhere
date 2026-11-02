@@ -66,7 +66,7 @@ struct Cli {
 enum Command {
     /// Show licenses, dependency notices and source links.
     Licenses,
-    /// Read or change account sleep defaults, or one app’s overrides.
+    /// Read or change account sleep defaults; inspect an app’s effective settings.
     Sleep(sleep::Args),
     /// Manage personal and team workspaces, memberships and project bindings.
     Workspaces {

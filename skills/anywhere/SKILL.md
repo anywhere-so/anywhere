@@ -60,7 +60,7 @@ anywhere check ~/.anywhere/apps/notes
 anywhere deploy ~/.anywhere/apps/notes
 ```
 
-Web apps and static sites inherit account sleep defaults: initially `auto`, 30 idle seconds. CRUD apps, dashboards and APIs usually suit auto; asleep, only disk is charged. Use `anywhere sleep` for defaults or `anywhere sleep APP` for overrides. Use a [job lease](references/sleep.md#background-jobs) for finite background work; use `sleep = "never"` for bots, polling, schedules or avoiding wake delays. Workers never sleep. Read [sleep](references/sleep.md) before choosing, and explain the tradeoff to the user.
+Web apps and static sites inherit account sleep defaults: initially `auto`, 30 idle seconds. CRUD apps, dashboards and APIs usually suit auto; asleep, only disk is charged. Set account defaults with `anywhere sleep`; set app overrides in `app.toml` and deploy. `anywhere sleep APP` inspects effective settings. Use a [job lease](references/sleep.md#background-jobs) for finite background work; use `sleep = "never"` for bots, polling, schedules or avoiding wake delays. Workers never sleep. Read [sleep](references/sleep.md) before choosing, and explain the tradeoff to the user.
 
 Deploy overwrites uploaded paths and deletes nothing. Deleted or renamed local files remain remotely. There is no rollback: failed uploads/builds can leave changed files, and the platform attempts to restart using the disk as it stands. Check logs and repair; do not assume the old app survived unchanged.
 
