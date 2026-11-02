@@ -720,6 +720,8 @@ pub struct Warning {
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Deserialize, Serialize, JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum OperationKind {
+    /// Changes an email password and drains every previous credential.
+    PasswordReset,
     /// Changes sleep settings without restarting apps.
     SleepChange,
     /// A workspace membership, invitation or access change, with its drain barrier.

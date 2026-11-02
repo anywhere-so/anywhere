@@ -54,7 +54,8 @@ pub fn longest(kind: &OperationKind) -> Duration {
         OperationKind::Deploy => crate::deploy::follow_for(appspec::MAX_START_TIMEOUT),
         OperationKind::SecretSet | OperationKind::SecretUnset => crate::secrets::CHANGE_DEADLINE,
         OperationKind::SleepChange => crate::deploy::follow_for(appspec::MAX_START_TIMEOUT),
-        OperationKind::WorkspaceChange
+        OperationKind::PasswordReset
+        | OperationKind::WorkspaceChange
         | OperationKind::AccountRename
         | OperationKind::AppAccess
         | OperationKind::ShareAdd
@@ -156,7 +157,7 @@ pub fn check_failed(operation: &Operation) -> Result<(), CliError> {
             (Some(error), _) => CliError::OperationFailed(error.clone()),
             (None, OperationKind::SleepChange) => CliError::OperationFailed(crate::api::types::ErrorBody { diagnostic:None, code:"sleep_change_failed_without_reason".into(), message:"sleep settings were saved but could not be applied; keep the operation ID and ask the operator".into(), retryable:false }),
             (None, OperationKind::WorkspaceChange) => CliError::OperationFailed(crate::api::types::ErrorBody { diagnostic:None, code:"workspace_change_failed_without_reason".to_owned(), message:"the workspace change failed without a recorded reason; keep its operation ID and ask the operator to inspect it".to_owned(), retryable:false }),
-            (None, OperationKind::CredentialRevoke) => CliError::OperationFailed(crate::api::types::ErrorBody {
+            (None, OperationKind::CredentialRevoke | OperationKind::PasswordReset) => CliError::OperationFailed(crate::api::types::ErrorBody {
                 diagnostic: None,
                 code: "revocation_failed_without_reason".to_owned(),
                 message: "credential revocation failed without a recorded reason; keep its operation ID and ask the operator to inspect it".to_owned(),
