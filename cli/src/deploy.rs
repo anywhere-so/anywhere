@@ -1,4 +1,4 @@
-//! Validate, create once, upload every file, then follow the deploy through
+//! Validate, wait for capacity before acceptance, upload every file, then follow the deploy through
 //! its steps, uploading, building and starting, until it finishes. The app is
 //! the folder's name, one of yours, or the one `--app` names, `NAME` or
 //! `OWNER/NAME`, whatever the folder's called. An image app's deploy sends its
@@ -21,6 +21,7 @@ use crate::retry::Retries;
 use crate::settings::UploadClient;
 use crate::{check, control, upload};
 
+mod capacity;
 mod logs;
 
 /// How long the CLI follows a deploy of `spec`: [`proto::DEPLOY_FOLLOW`], and
@@ -63,14 +64,10 @@ pub async fn run(
     // Capture before POST: the host may write the deploy's first line before
     // the accepted operation reaches us. A failed read warns after acceptance.
     let log_start = logs::start(&app, *output).await;
-    let deadline = Instant::now() + deploy_deadline(&checked.app.spec);
-    // Never retried: another POST would create another deploy.
-    let accepted = control
-        .client
-        .deploy_create(app.name.as_str(), app.owner(), &checked.request)
-        .await
-        .map_err(|error| control.error(error))?;
+    let accepted = capacity::create(control, &app, &checked.request, *output).await?;
     output.operation = Some(accepted.id);
+    // Preparing capacity does not spend the accepted deploy's build time.
+    let deadline = Instant::now() + deploy_deadline(&checked.app.spec);
     let binding = if checked.app.dir.as_os_str().is_empty() {
         None
     } else {
