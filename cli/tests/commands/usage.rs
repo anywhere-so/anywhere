@@ -44,7 +44,7 @@ fn out_of_memory() -> Value {
     usage["problems"] = json!([{
         "code": "oom_kills", "severity": "failure",
         "message": "It ran out of its 2 GiB of memory 6 times in the last 24 hours; each time every process was ended and the app started again. Its memory is what its sandbox holds on the host, gVisor's own included but not the files it has cached.",
-        "fix": "This app's memory ceiling is 2 GiB. Pro allows up to 16 GiB per app; upgrade at https://anywhere.so/billing. Or lower what the app uses, such as Node's --max-old-space-size or fewer workers.",
+        "fix": "This app's memory ceiling is 2 GiB. Pro allows up to 8 GiB per app; upgrade at https://anywhere.so/billing. Or lower what the app uses, such as Node's --max-old-space-size or fewer workers.",
         "change": { "file": "app.toml", "table": "limits", "key": "memory", "value": "4 GiB" },
         "needs_plan": "pro", "upgrade_url": "https://anywhere.so/billing",
         "last_at": "2026-10-27T14:05:00Z",
@@ -116,7 +116,7 @@ async fn a_problem_comes_with_its_fix_and_the_command_still_succeeds() {
     assert!(
         shown.ends_with(
             "\nproblem: oom_kills: it ran out of its 2 GiB of memory 6 times in the last 24 hours; each time every process was ended and the app started again. Its memory is what its sandbox holds on the host, gVisor's own included but not the files it has cached. The last was counted in the 5 minutes from 14:05 UTC.
-fix: this app's memory ceiling is 2 GiB. Pro allows up to 16 GiB per app; upgrade at https://anywhere.so/billing. Or lower what the app uses, such as Node's --max-old-space-size or fewer workers.
+fix: this app's memory ceiling is 2 GiB. Pro allows up to 8 GiB per app; upgrade at https://anywhere.so/billing. Or lower what the app uses, such as Node's --max-old-space-size or fewer workers.
 "
         ),
         "{shown}"
