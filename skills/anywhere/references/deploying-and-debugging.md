@@ -49,7 +49,7 @@ disk = "4 GiB"
 
 Omitted values take the owner's current per-app plan ceilings, recalculated on every deploy. Set only intentional lower caps; memory/disk use whole MiB or GiB. Inspect current settings before updating. `[resources]`, named sizes and `disk_gib` are obsolete and refused. A plan change takes effect at the next deploy.
 
-Published defaults are Free: 3 deployed apps, 1 shared vCPU/2 GiB memory/10 GiB disk per app; Pro: any number, up to 4 vCPUs/16 GiB/100 GiB per app. Treat the current CLI response as authoritative. `limit_above_plan` says what to lower/remove; `disk_limit_below_used` means the requested quota cannot hold current data. Disk caps can decrease only when existing data fits. Preserve live files rather than deleting them to satisfy a cap without the user's direction.
+Published defaults are Free: 3 deployed apps, 1 shared vCPU/2 GiB memory/10 GiB disk per app; Pro: any number, up to 4 vCPUs/8 GiB/100 GiB per app. Treat the current CLI response as authoritative. `limit_above_plan` says what to lower/remove; `disk_limit_below_used` means the requested quota cannot hold current data. Disk caps can decrease only when existing data fits. Preserve live files rather than deleting them to satisfy a cap without the user's direction.
 
 `plan_app_limit` and other limit refusals require changing the request, not repeating unchanged. Explain upgrade/top-up options and let the user choose; do not buy a plan, make replacement accounts or delete another app automatically. `host_full` means no host capacity for a new app; existing apps can still be updated. Nothing was created: try later or ask the user about using an existing app.
 

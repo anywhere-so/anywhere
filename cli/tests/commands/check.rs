@@ -65,7 +65,7 @@ const OPEN_SEO: &str = "title = \"OpenSEO\"\nimage = \"ghcr.io/every-app/open-se
 /// The account's current plan terms, supplied by the server.
 fn me(plan: &str) -> Value {
     let limits = if plan == "pro" {
-        json!({ "max_apps":null, "cpu_millicores":4000, "memory_bytes":17179869184u64, "disk_bytes":107374182400u64 })
+        json!({ "max_apps":null, "cpu_millicores":4000, "memory_bytes":8589934592u64, "disk_bytes":107374182400u64 })
     } else {
         json!({ "max_apps":3, "cpu_millicores":1000, "memory_bytes":2147483648u64, "disk_bytes":10737418240u64 })
     };
