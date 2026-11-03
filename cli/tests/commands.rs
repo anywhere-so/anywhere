@@ -459,3 +459,142 @@ async fn licenses_are_available_offline_in_text_and_json() {
         assert!(output.stderr.is_empty());
     }
 }
+
+#[tokio::test]
+async fn capacity_preparation_is_visible_and_continues_the_same_deploy() {
+    for json_mode in [true, false] {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::write(
+            dir.path().join("app.toml"),
+            format!("sleep = \"never\"\n{TOML}"),
+        )
+        .unwrap();
+        let server = Server::start(vec![
+            Reply { status: 404, ..reply(json!({"code":"no_such_app","message":"no app yet","retryable":false})) },
+            Reply { status: 503, ..reply(json!({"code":"host_starting","message":"capacity is preparing","retryable":true})) },
+            Reply { status: 202, ..reply(operation("succeeded")) },
+        ]).await;
+        let mut args = vec!["deploy", dir.path().to_str().unwrap(), "--app", "dev/hello"];
+        if json_mode {
+            args.push("--json");
+        }
+        let output = server.run(&args).await;
+        assert!(output.status.success(), "{}", text(&output.stderr));
+        let progress = text(&output.stderr);
+        assert!(progress.contains("Preparing your app"), "{progress}");
+        assert!(progress.contains("1–5 minutes"), "{progress}");
+        assert!(
+            !progress.contains("\x1b"),
+            "redirected output must not contain terminal animation"
+        );
+        if json_mode {
+            assert_eq!(success(&output)["operation"], ID);
+            let preparing = progress
+                .lines()
+                .map(|line| serde_json::from_str::<Value>(line).unwrap())
+                .find(|event| event["stage"] == "preparing")
+                .unwrap();
+            assert_eq!(preparing["event"], "progress");
+            assert_eq!(preparing["elapsed_seconds"], 0);
+            assert!(preparing["operation"].is_null());
+        }
+        let requests = server.requests.lock().unwrap();
+        let posts: Vec<_> = requests.iter().filter(|r| r.starts_with("POST ")).collect();
+        assert_eq!(posts.len(), 2);
+        assert_eq!(
+            posts[0], posts[1],
+            "waiting must preserve the destination, binding and request"
+        );
+        assert!(dir.path().join(".anywhere/project.json").exists());
+    }
+}
+
+#[tokio::test]
+async fn capacity_preparation_never_retries_an_unknown_or_forbidden_refusal() {
+    for (status, code, retryable, expected) in [
+        (503, "cloud_unavailable", true, "cloud_unavailable"),
+        (503, "host_starting", false, "host_starting"),
+        (500, "host_starting", true, "api_answer_invalid"),
+        (0, "host_starting", true, "api_unreachable"),
+    ] {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::write(dir.path().join("app.toml"), TOML).unwrap();
+        let mut replies = vec![Reply {
+            status: 404,
+            ..reply(json!({"code":"no_such_app","message":"no app yet","retryable":false}))
+        }];
+        // A lost answer after waiting is still ambiguous: never issue a third POST.
+        if status == 0 {
+            replies.push(Reply {
+                status: 503,
+                ..reply(json!({"code":"host_starting","message":"preparing","retryable":true}))
+            });
+        }
+        replies.push(Reply {
+            status,
+            ..reply(json!({"code":code,"message":"capacity unavailable","retryable":retryable}))
+        });
+        let server = Server::start(replies).await;
+        let output = server
+            .run(&[
+                "--json",
+                "deploy",
+                dir.path().to_str().unwrap(),
+                "--app",
+                "dev/hello",
+            ])
+            .await;
+        let error = failure(&output, expected);
+        assert_eq!(error["retryable"], false);
+        assert!(error["operation"].is_null());
+        assert_eq!(
+            server
+                .paths()
+                .iter()
+                .filter(|p| p.starts_with("POST "))
+                .count(),
+            if status == 0 { 2 } else { 1 }
+        );
+        assert!(!dir.path().join(".anywhere/project.json").exists());
+    }
+}
+
+#[tokio::test]
+async fn a_capacity_error_after_acceptance_never_starts_another_deploy() {
+    let dir = tempfile::tempdir().unwrap();
+    std::fs::write(dir.path().join("app.toml"), TOML).unwrap();
+    let mut accepted = operation("failed");
+    accepted["error"] =
+        json!({"code":"host_starting","message":"capacity unavailable","retryable":true});
+    let server = Server::start(vec![
+        Reply {
+            status: 404,
+            ..reply(json!({"code":"no_such_app","message":"no app yet","retryable":false}))
+        },
+        Reply {
+            status: 202,
+            ..reply(accepted)
+        },
+    ])
+    .await;
+    let output = server
+        .run(&[
+            "--json",
+            "deploy",
+            dir.path().to_str().unwrap(),
+            "--app",
+            "dev/hello",
+        ])
+        .await;
+    let error = failure(&output, "host_starting");
+    assert_eq!(error["operation"], ID);
+    assert_eq!(error["retryable"], false);
+    assert_eq!(
+        server
+            .paths()
+            .iter()
+            .filter(|p| p.starts_with("POST "))
+            .count(),
+        1
+    );
+}
