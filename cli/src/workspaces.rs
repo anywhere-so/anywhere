@@ -142,6 +142,11 @@ pub async fn run(command: Command, output: &mut Output) -> Result<ResultData, Cl
             // hands its person the page that pays; no team exists until then.
             naming::Username::parse_new(&namespace)
                 .map_err(|source| CliError::QualifiedName { source })?;
+            if !control_api::workspace_title_valid(&title) {
+                return Err(argument(
+                    "--title must be 1 to 80 characters without control characters",
+                ));
+            }
             let mut checked = request!(control.client.workspace_name_check(&namespace));
             let mut page =
                 reqwest::Url::parse(&checked.checkout_url).map_err(|_| CliError::Internal {
