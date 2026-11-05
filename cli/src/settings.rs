@@ -7,7 +7,7 @@ use std::fs;
 use std::path::Path;
 use std::time::Duration;
 
-use reqwest::header::{AUTHORIZATION, HeaderMap, HeaderValue};
+use reqwest::header::{AUTHORIZATION, HeaderMap, HeaderName, HeaderValue};
 
 use crate::error::{CliError, chain};
 
@@ -29,6 +29,8 @@ pub struct Settings {
     /// More certificate authorities to trust than the system's, such as the
     /// local stack's.
     ca: Option<Vec<reqwest::Certificate>>,
+    /// The AI agent running the CLI, if it found one ([`crate::agent`]).
+    agent: Option<HeaderValue>,
 }
 
 impl Settings {
@@ -69,6 +71,7 @@ impl Settings {
             api: api.trim_end_matches('/').to_owned(),
             token,
             ca: ca_from_env()?,
+            agent: crate::agent::from_env()?,
         })
     }
 
@@ -130,7 +133,7 @@ impl Settings {
     }
 
     fn client(&self) -> reqwest::ClientBuilder {
-        client(self.ca.as_deref())
+        client(self.ca.as_deref(), self.agent.as_ref())
     }
 }
 
@@ -157,6 +160,7 @@ pub struct Anonymous {
     pub api: String,
     pub client: reqwest::Client,
     ca: Option<Vec<reqwest::Certificate>>,
+    agent: Option<HeaderValue>,
 }
 
 impl Anonymous {
@@ -168,10 +172,12 @@ impl Anonymous {
             error => error,
         })?;
         let ca = ca_from_env()?;
+        let agent = crate::agent::from_env()?;
         Ok(Self {
             api: api.trim_end_matches('/').to_owned(),
-            client: build(client(ca.as_deref()).timeout(API_TIMEOUT))?,
+            client: build(client(ca.as_deref(), agent.as_ref()).timeout(API_TIMEOUT))?,
             ca,
+            agent,
         })
     }
 
@@ -185,7 +191,7 @@ impl Anonymous {
         let mut headers = HeaderMap::new();
         headers.insert(AUTHORIZATION, token);
         build(
-            client(self.ca.as_deref())
+            client(self.ca.as_deref(), self.agent.as_ref())
                 .default_headers(headers)
                 .timeout(API_TIMEOUT),
         )
@@ -194,13 +200,25 @@ impl Anonymous {
 
 /// What every client shares: who's asking, with the contract it was built
 /// for, `anywhere/<version> (contract <N>)`, which the gateway refuses if it
-/// isn't the platform's, how long connecting may take, which certificate
-/// authorities to trust, and never following a redirect, so the token goes
-/// only to the configured origin. Exec's and pull's WebSockets, and uploads,
-/// are made with it too.
-fn client(ca: Option<&[reqwest::Certificate]>) -> reqwest::ClientBuilder {
+/// isn't the platform's, the AI agent running the CLI in `Anywhere-Agent` if
+/// there is one, how long connecting may take, which certificate authorities
+/// to trust, and never following a redirect, so the token goes only to the
+/// configured origin. Exec's and pull's WebSockets, and uploads, are made with
+/// it too. A client's own default headers add to these.
+fn client(
+    ca: Option<&[reqwest::Certificate]>,
+    agent: Option<&HeaderValue>,
+) -> reqwest::ClientBuilder {
+    let mut headers = HeaderMap::new();
+    if let Some(agent) = agent {
+        headers.insert(
+            HeaderName::from_static(control_api::AGENT_HEADER),
+            agent.clone(),
+        );
+    }
     let client = reqwest::Client::builder()
         .user_agent(control_api::cli_user_agent(env!("ANYWHERE_VERSION")))
+        .default_headers(headers)
         .connect_timeout(CONNECT_TIMEOUT)
         .redirect(reqwest::redirect::Policy::none());
     match ca {

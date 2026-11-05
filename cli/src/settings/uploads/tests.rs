@@ -110,7 +110,7 @@ fn plain_http_is_allowed_only_for_a_loopback_host() {
 }
 
 #[tokio::test]
-async fn clients_never_follow_same_or_other_origin_redirects() {
+async fn clients_name_the_agent_and_never_follow_same_or_other_origin_redirects() {
     use std::time::Duration;
     use tokio::io::{AsyncReadExt, AsyncWriteExt};
     use tokio::net::TcpListener;
@@ -118,6 +118,7 @@ async fn clients_never_follow_same_or_other_origin_redirects() {
         api: "https://private.example.test".to_owned(),
         token: "test-only-owner-token".to_owned(),
         ca: None,
+        agent: Some(reqwest::header::HeaderValue::from_static("claude-code")),
     };
     let clients = settings.clients().unwrap();
     // The real builders' redirect policies are tested against a loopback HTTP
@@ -148,6 +149,13 @@ async fn clients_never_follow_same_or_other_origin_redirects() {
                     head.extend_from_slice(&byte);
                     assert!(head.len() < 8192);
                 }
+                // Every client names the agent running the CLI, once.
+                let head = String::from_utf8(head).unwrap().to_ascii_lowercase();
+                assert_eq!(
+                    head.matches("\r\nanywhere-agent: claude-code\r\n").count(),
+                    1,
+                    "{head}"
+                );
                 let reply = format!(
                     "HTTP/1.1 307 Temporary Redirect\r\nLocation: {location}\r\nContent-Length: 0\r\nConnection: close\r\n\r\n"
                 );

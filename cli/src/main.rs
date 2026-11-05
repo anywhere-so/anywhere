@@ -9,6 +9,7 @@ use clap::{Args, Parser, Subcommand, ValueEnum};
 use tokio::time::Instant;
 use uuid::Uuid;
 
+mod agent;
 mod api;
 mod app;
 mod app_ref;
