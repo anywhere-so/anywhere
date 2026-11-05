@@ -53,6 +53,21 @@ pub struct WorkspaceCreate {
     pub title: String,
 }
 
+/// A name a team could take now: nobody's account has it or held it within
+/// its 30-day release hold, and nobody else's checkout holds it.
+#[derive(Clone, Debug, PartialEq, Eq, Deserialize, Serialize, JsonSchema)]
+pub struct WorkspaceName {
+    pub namespace: String,
+    pub available: bool,
+    /// The portal's page where a person pays for the team with this name.
+    pub checkout_url: String,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize, JsonSchema)]
+pub struct WorkspaceNamePath {
+    pub namespace: String,
+}
+
 #[derive(Clone, Debug, Deserialize, Serialize, JsonSchema)]
 pub struct WorkspacePath {
     pub workspace: String,

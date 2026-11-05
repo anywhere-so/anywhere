@@ -137,11 +137,20 @@ pub async fn run(command: Command, output: &mut Output) -> Result<ResultData, Cl
                 control.client.workspace_app_sharing(&workspace, &app)
             ));
         }
-        Command::Create { namespace, title } => request!(
-            control
-                .client
-                .workspace_create(&control_api::WorkspaceCreate { namespace, title })
-        ),
+        Command::Create { namespace, title } => {
+            // Only a person pays for a team, so an agent checks the name and
+            // hands its person the page that pays; no team exists until then.
+            naming::Username::parse_new(&namespace)
+                .map_err(|source| CliError::QualifiedName { source })?;
+            let mut checked = request!(control.client.workspace_name_check(&namespace));
+            let mut page =
+                reqwest::Url::parse(&checked.checkout_url).map_err(|_| CliError::Internal {
+                    detail: "the platform's team checkout page isn't a URL".to_owned(),
+                })?;
+            page.query_pairs_mut().append_pair("title", &title);
+            checked.checkout_url = page.into();
+            return data(checked);
+        }
         Command::Members { workspace } => {
             return data(request!(control.client.workspace_members(&workspace)));
         }
