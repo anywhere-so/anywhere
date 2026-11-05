@@ -38,6 +38,7 @@ fuzz_target!(|input: &[u8]| {
             }
             FollowEvent::Notice(notice) => again.extend_from_slice(&notice.event()),
             FollowEvent::Heartbeat => again.extend_from_slice(LOGS_HEARTBEAT),
+            FollowEvent::Complete => again.extend_from_slice(control_api::LOGS_COMPLETE),
         }
     }
     let (reread, rest) = read(&again, usize::from(cut)).expect("what it wrote reads back");

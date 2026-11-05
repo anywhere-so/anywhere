@@ -1,13 +1,7 @@
 use super::*;
 
 fn logs(raw: &'static [u8]) -> Reply {
-    Reply {
-        stream: Some(Streamed {
-            parts: vec![(Duration::ZERO, event(raw.len() as u64, raw))],
-            cut: false,
-        }),
-        ..reply(Value::Null)
-    }
+    streamed(vec![(Duration::ZERO, event(raw.len() as u64, raw))], false)
 }
 
 #[tokio::test]
@@ -42,11 +36,29 @@ fn at(offset: u64) -> control_api::LogPosition {
     }
 }
 
-fn streamed(parts: Vec<(Duration, Vec<u8>)>, cut: bool) -> Reply {
+fn streamed(mut parts: Vec<(Duration, Vec<u8>)>, cut: bool) -> Reply {
+    if !cut {
+        parts.push((Duration::ZERO, control_api::LOGS_COMPLETE.to_vec()));
+    }
     Reply {
         stream: Some(Streamed { parts, cut }),
         ..reply(Value::Null)
     }
+}
+
+#[tokio::test]
+async fn an_event_boundary_eof_does_not_certify_a_complete_log() {
+    let server = Server::start(vec![Reply {
+        stream: Some(Streamed {
+            parts: vec![(Duration::ZERO, event(4, b"one\n"))],
+            cut: false,
+        }),
+        ..reply(Value::Null)
+    }])
+    .await;
+    let output = server.run(&["--json", "logs", "--app", "hello"]).await;
+    failure(&output, "logs_interrupted");
+    assert!(text(&output.stdout).is_empty());
 }
 
 fn refusal(status: u16, code: &str) -> Reply {
