@@ -11,7 +11,8 @@
 //! `event: truncated` or `event: resume_lost`, followed by an empty line.
 //! Finite reads request the same format with `events=true`. With
 //! `after=end` and `follow=false`, the one event has empty data and names the
-//! current log end, then the answer ends.
+//! current log end. Every event-formatted read finishes with `event: complete`
+//! and an empty line. EOF without it is an interruption, even between events.
 
 use std::fmt;
 use std::time::Duration;
@@ -166,6 +167,8 @@ impl LogNotice {
 /// What a follow sends.
 #[derive(Debug, PartialEq, Eq)]
 pub enum FollowEvent {
+    /// The platform finished this read. EOF alone never proves completion.
+    Complete,
     Notice(LogNotice),
     /// A part of the log, and where the log is after it.
     Data {
@@ -189,8 +192,7 @@ impl fmt::Display for FollowError {
 impl std::error::Error for FollowError {}
 
 /// Reads a follow's events from its bytes as they come, in chunks split
-/// anywhere, strictly: anything but what [`log_event`] and [`LOGS_HEARTBEAT`]
-/// write is an error.
+/// anywhere, strictly, including notices and [`LOGS_COMPLETE`].
 #[derive(Debug, Default)]
 pub struct FollowReader {
     /// The line not yet ended.
@@ -200,6 +202,8 @@ pub struct FollowReader {
     data: Option<Vec<u8>>,
     heartbeat: bool,
     notice: Option<LogNotice>,
+    ending: bool,
+    completed: bool,
 }
 
 impl FollowReader {
@@ -219,16 +223,24 @@ impl FollowReader {
         Ok(events)
     }
 
-    /// Whether the stream may end here: between events.
+    /// Whether no event is partially buffered. EOF also requires [`Self::is_complete`].
     pub fn at_rest(&self) -> bool {
         self.line.is_empty()
             && self.id.is_none()
             && self.data.is_none()
             && !self.heartbeat
             && self.notice.is_none()
+            && !self.ending
+    }
+
+    pub fn is_complete(&self) -> bool {
+        self.completed && self.at_rest()
     }
 
     fn extend(&mut self, bytes: &[u8]) -> Result<(), FollowError> {
+        if self.completed && !bytes.is_empty() {
+            return Err(FollowError("the follow sent bytes after completion".into()));
+        }
         if self.line.len() + bytes.len() > MAX_LINE {
             return Err(FollowError(format!(
                 "the follow sent a line over {MAX_LINE} bytes"
@@ -240,7 +252,15 @@ impl FollowReader {
 
     fn line_ended(&mut self, line: &[u8]) -> Result<Option<FollowEvent>, FollowError> {
         let bad = |what: &str| FollowError(format!("the follow sent {what}"));
+        if self.completed {
+            return Err(bad("an event after completion"));
+        }
         if line.is_empty() {
+            if self.ending {
+                self.ending = false;
+                self.completed = true;
+                return Ok(Some(FollowEvent::Complete));
+            }
             if let Some(notice) = self.notice.take() {
                 if self.id.is_some() || self.data.is_some() || self.heartbeat {
                     return Err(bad("mixed notice and output"));
@@ -256,7 +276,7 @@ impl FollowReader {
                 _ => Err(bad("an event without both its id and its data")),
             };
         }
-        if self.notice.is_some() {
+        if self.notice.is_some() || self.ending {
             return Err(bad("more after a notice"));
         }
         if let Some(code) = line.strip_prefix(b"event: ") {
@@ -264,6 +284,10 @@ impl FollowReader {
                 return Err(bad("notice inside output"));
             }
             let code = std::str::from_utf8(code).map_err(|_| bad("invalid notice"))?;
+            if code == "complete" {
+                self.ending = true;
+                return Ok(None);
+            }
             self.notice = Some(LogNotice::parse(code).ok_or_else(|| bad("unknown notice"))?);
             return Ok(None);
         }
@@ -302,6 +326,9 @@ impl FollowReader {
     }
 }
 
+/// A successful end, separate from app bytes and from a transport EOF.
+pub const LOGS_COMPLETE: &[u8] = b"event: complete\n\n";
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -312,6 +339,40 @@ mod tests {
         born: 1_761_600_000_123_456_789,
         offset: 0,
     };
+
+    #[test]
+    fn completion_requires_its_whole_event_and_forbids_further_bytes() {
+        let mut sent = log_event(&AT, b"event: complete\n\n");
+        let output_end = sent.len();
+        sent.extend_from_slice(LOGS_COMPLETE);
+        for cut in 0..=sent.len() {
+            let mut reader = FollowReader::default();
+            let mut events = reader.push(&sent[..cut]).unwrap();
+            assert_eq!(reader.is_complete(), cut == sent.len());
+            events.extend(reader.push(&sent[cut..]).unwrap());
+            assert!(reader.is_complete());
+            assert_eq!(
+                events,
+                [
+                    FollowEvent::Data {
+                        bytes: b"event: complete\n\n".to_vec(),
+                        position: AT
+                    },
+                    FollowEvent::Complete
+                ]
+            );
+            assert!(reader.push(b":\n\n").is_err());
+        }
+        let mut reader = FollowReader::default();
+        reader.push(&sent[..output_end]).unwrap();
+        assert!(reader.at_rest());
+        assert!(!reader.is_complete());
+        assert!(
+            FollowReader::default()
+                .push(b"event: complete\ndata: x\n\n")
+                .is_err()
+        );
+    }
 
     #[test]
     fn completeness_notices_stay_separate_from_app_bytes_at_every_split() {

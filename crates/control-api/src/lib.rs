@@ -26,7 +26,7 @@ pub use sleep::*;
 pub const MAX_DEPLOY_REQUEST_LEN: usize = 32 * 1024 * 1024;
 
 /// The longest a follow of an app's logs lasts. The control API then ends it as
-/// if the log had, so its caller's access is checked again when it asks again,
+/// with a completion event, so access is checked again when it asks again,
 /// with `after`, to go on from where it got to.
 pub const LOGS_FOLLOW_FOR: Duration = Duration::from_secs(30 * 60);
 

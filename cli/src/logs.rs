@@ -82,7 +82,7 @@ pub async fn show(app: Option<&str>, follow: bool, output: Output) -> Result<Res
         })? {
             match event {
                 control_api::FollowEvent::Notice(notice) => output.log_notice(notice),
-                control_api::FollowEvent::Heartbeat => {}
+                control_api::FollowEvent::Heartbeat | control_api::FollowEvent::Complete => {}
                 control_api::FollowEvent::Data { bytes, .. } => {
                     if output.json {
                         if collected.len() + bytes.len() > MAX_JSON_OUTPUT {
@@ -98,9 +98,9 @@ pub async fn show(app: Option<&str>, follow: bool, output: Output) -> Result<Res
             }
         }
     }
-    if !reader.at_rest() {
+    if !reader.is_complete() {
         return Err(CliError::LogsInterrupted {
-            detail: "the response ended during a log event".to_owned(),
+            detail: "the response ended without the platform's completion event".to_owned(),
         });
     }
     if output.json {
@@ -173,8 +173,12 @@ pub async fn follow(
                         control_api::LOGS_FOLLOW_QUIET.as_secs()
                     ));
                 }
-                Ok(None) if reader.at_rest() => break None,
-                Ok(None) => break Some("the connection ended partway through a part".to_owned()),
+                Ok(None) if reader.is_complete() => break None,
+                Ok(None) => {
+                    break Some(
+                        "the connection ended without the platform's completion event".to_owned(),
+                    );
+                }
                 Ok(Some(Err(error))) => break Some(chain(&error)),
                 Ok(Some(Ok(chunk))) => chunk,
             };
@@ -194,6 +198,7 @@ pub async fn follow(
                     control_api::FollowEvent::Heartbeat => {
                         heard = true;
                     }
+                    control_api::FollowEvent::Complete => {}
                 }
             }
         };
