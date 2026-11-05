@@ -15,7 +15,7 @@ OPERATIONS = {
     'app_sleep_view',
     'workspace_list',
     'workspace_usage',
-    'workspace_create',
+    'workspace_name_check',
     'workspace_view',
     'workspace_members',
     'workspace_invite',

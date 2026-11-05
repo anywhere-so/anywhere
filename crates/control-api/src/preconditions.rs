@@ -71,6 +71,12 @@ impl ProjectPreconditions {
     }
 }
 
+/// A team's title: 1 to 80 characters, not all blank, with no control
+/// characters.
+pub fn workspace_title_valid(title: &str) -> bool {
+    !title.trim().is_empty() && title.chars().count() <= 80 && !title.chars().any(char::is_control)
+}
+
 pub fn workspace_invitation_shaped(secret: &str) -> bool {
     secret.len() == 64
         && secret

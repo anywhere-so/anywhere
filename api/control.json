@@ -2162,6 +2162,27 @@
         ],
         "type": "object"
       },
+      "WorkspaceName": {
+        "description": "A name a team could take now: nobody's account has it or held it within its 30-day release hold, and nobody else's checkout holds it.",
+        "properties": {
+          "available": {
+            "type": "boolean"
+          },
+          "checkout_url": {
+            "description": "The portal's page where a person pays for the team with this name.",
+            "type": "string"
+          },
+          "namespace": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "available",
+          "checkout_url",
+          "namespace"
+        ],
+        "type": "object"
+      },
       "WorkspaceList": {
         "properties": {
           "workspaces": {
@@ -2236,22 +2257,6 @@
           "member"
         ],
         "type": "string"
-      },
-      "WorkspaceCreate": {
-        "additionalProperties": false,
-        "properties": {
-          "namespace": {
-            "type": "string"
-          },
-          "title": {
-            "type": "string"
-          }
-        },
-        "required": [
-          "namespace",
-          "title"
-        ],
-        "type": "object"
       },
       "WorkspaceApps": {
         "properties": {
@@ -2641,7 +2646,7 @@
     }
   },
   "info": {
-    "description": "Contract 11. The `anywhere` CLI says so in every request's User-Agent, `anywhere/<version> (contract 11)`, and the gateway refuses a CLI built for another contract, or one from before them (`anywhere/<version>` alone), with 400 `cli_outdated` before the request reaches this API, whatever its route or body. Its message says how to install the CLI this platform serves. Other clients are told nothing.",
+    "description": "Contract 12. The `anywhere` CLI says so in every request's User-Agent, `anywhere/<version> (contract 12)`, and the gateway refuses a CLI built for another contract, or one from before them (`anywhere/<version>` alone), with 400 `cli_outdated` before the request reaches this API, whatever its route or body. Its message says how to install the CLI this platform serves. Other clients are told nothing.",
     "title": "Control API",
     "version": "0.1.0"
   },
@@ -3894,6 +3899,41 @@
         "summary": "The secret is in the body, never a path or query parameter."
       }
     },
+    "/v1/workspace-names/{namespace}": {
+      "get": {
+        "description": "Answers the name, and the portal page where a person pays for a team with it. Refused with the name's `invalid_username` or `username_reserved`, with `username_taken` when an account has it or held it within its 30-day release hold, and with `workspace_name_held` while another person's checkout holds it.",
+        "operationId": "workspace_name_check",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "namespace",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkspaceName"
+                }
+              }
+            },
+            "description": "successful operation"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "summary": "Whether a team could take a name now. Changes nothing."
+      }
+    },
     "/v1/workspaces": {
       "get": {
         "operationId": "workspace_list",
@@ -3916,38 +3956,6 @@
           }
         },
         "summary": "Personal and team workspaces this person belongs to."
-      },
-      "post": {
-        "operationId": "workspace_create",
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/WorkspaceCreate"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "202": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Operation"
-                }
-              }
-            },
-            "description": "successfully enqueued operation"
-          },
-          "4XX": {
-            "$ref": "#/components/responses/Error"
-          },
-          "5XX": {
-            "$ref": "#/components/responses/Error"
-          }
-        },
-        "summary": "Create a team. It cannot run apps until its owner funds developer seats."
       }
     },
     "/v1/workspaces/{workspace}": {
