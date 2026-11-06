@@ -11,7 +11,7 @@ fn device_code() -> String {
 
 /// The approval page on the stand-in API's own origin, at `api`, with the
 /// code in its fragment.
-fn started(api: &str, expires_in: i64) -> Reply {
+pub(super) fn started(api: &str, expires_in: i64) -> Reply {
     Reply {
         status: 201,
         ..reply(json!({
@@ -32,14 +32,14 @@ fn pending() -> Reply {
     }
 }
 
-fn created() -> Reply {
+pub(super) fn created() -> Reply {
     Reply {
         status: 201,
         ..reply(json!({"id": ID, "token": TOKEN, "expires_at": "2026-11-13T00:00:00Z"}))
     }
 }
 
-fn me() -> Reply {
+pub(super) fn me() -> Reply {
     reply(
         json!({"username": "alice", "apps_origin": "https://anywhereapps.test", "plan": "free", "apps": 0,
         "limits": {"max_apps":3,"cpu_millicores":1000,"memory_bytes":2147483648u64,"disk_bytes":10737418240u64},
@@ -49,7 +49,7 @@ fn me() -> Reply {
 
 /// Runs the CLI with its configuration in `config`, and only the environment
 /// `env` gives it.
-async fn run_in(config: &Path, args: &[&str], env: &[(&str, &str)]) -> Output {
+pub(super) async fn run_in(config: &Path, args: &[&str], env: &[(&str, &str)]) -> Output {
     let mut command = command();
     command.args(args).env("XDG_CONFIG_HOME", config);
     for (name, value) in env {

@@ -16,6 +16,8 @@ use std::time::Duration;
 use serde_json::{Value, json};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
+#[path = "commands/agent.rs"]
+mod agent;
 #[path = "commands/apps.rs"]
 mod apps;
 #[path = "commands/check.rs"]
@@ -44,6 +46,11 @@ mod token;
 mod update;
 #[path = "commands/usage.rs"]
 mod usage;
+
+/// The agents' markers the CLI reads, which [`command_at`] clears.
+#[path = "../src/agent/markers.rs"]
+#[allow(dead_code, reason = "the tests clear only each marker's variable")]
+mod markers;
 
 const ID: &str = "01999dd0-7f9a-7000-8000-000000000001";
 const SECRET: &str = "test-cli-token";
@@ -246,6 +253,8 @@ impl Server {
                         .contains(&format!("authorization: bearer {SECRET}"))
                 );
                 assert_contract(request);
+                // No agent runs the CLI under test ([`command_at`]).
+                assert_eq!(agent_headers(request), Vec::<String>::new(), "{request}");
                 request.lines().next().unwrap().to_owned()
             })
             .collect()
@@ -273,6 +282,19 @@ fn assert_contract(request: &str) {
     );
 }
 
+/// The request's `Anywhere-Agent` values.
+fn agent_headers(request: &str) -> Vec<String> {
+    let head = request.split_once("\r\n\r\n").unwrap().0;
+    head.lines()
+        .skip(1)
+        .filter_map(|line| {
+            let (name, value) = line.split_once(':')?;
+            name.eq_ignore_ascii_case(control_api::AGENT_HEADER)
+                .then(|| value.trim().to_owned())
+        })
+        .collect()
+}
+
 impl Drop for Server {
     fn drop(&mut self) {
         self.task.abort();
@@ -296,6 +318,13 @@ fn command_at(cli: &Path) -> tokio::process::Command {
         // `anywhere skill install` writes Claude Code's copy there.
         .env_remove("CLAUDE_CONFIG_DIR")
         .env_remove("ANYWHERE_NO_UPDATE_CHECK")
+        // Nor which agent runs it, as the agent running these tests may say.
+        .env_remove("ANYWHERE_AGENT")
+        .env_remove("AI_AGENT");
+    for marker in markers::MARKERS {
+        command.env_remove(marker.var);
+    }
+    command
         // Every command keeps the skill there, never the machine's own.
         .env(
             "HOME",

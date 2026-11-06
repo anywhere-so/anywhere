@@ -1,7 +1,7 @@
 //! The contract between the CLI and the platform, and how a request says which
 //! one the CLI that sent it was built for: in its `User-Agent`,
-//! `anywhere/<version> (contract <N>)`, which every hop to the gateway keeps,
-//! while the front door strips `anywhere-` headers. The gateway refuses a CLI
+//! `anywhere/<version> (contract <N>)`, which every hop to the gateway keeps
+//! and which tells the CLI's requests from every other client's. The gateway refuses a CLI
 //! on another contract with `cli_outdated` before the request goes anywhere
 //! (the API boundary), so a route or field the CLI relies on that has
 //! since changed never answers it with something else. The one route it
@@ -57,6 +57,32 @@ const CLI: &str = "anywhere/";
 /// `anywhere/<version> (contract <CONTRACT>)`.
 pub fn cli_user_agent(version: &str) -> String {
     format!("{CLI}{version} (contract {CONTRACT})")
+}
+
+/// The header in which the CLI names the AI agent running it, such as
+/// `claude-code`, on every request to the control API, and leaves out when it
+/// finds none.
+pub const AGENT_HEADER: &str = "anywhere-agent";
+
+/// The most bytes an [`AGENT_HEADER`] value holds.
+pub const AGENT_NAME_MAX: usize = 32;
+
+/// Whether `name` is an [`AGENT_HEADER`] value: a lowercase ASCII letter or
+/// digit, then up to 31 more of those, `.` or `-`
+/// (`^[a-z0-9][a-z0-9.-]{0,31}$`).
+pub fn is_agent_name(name: &str) -> bool {
+    let bytes = name.as_bytes();
+    let plain = |byte: &u8| byte.is_ascii_lowercase() || byte.is_ascii_digit();
+    match bytes.split_first() {
+        Some((first, rest)) => {
+            bytes.len() <= AGENT_NAME_MAX
+                && plain(first)
+                && rest
+                    .iter()
+                    .all(|byte| plain(byte) || *byte == b'.' || *byte == b'-')
+        }
+        None => false,
+    }
 }
 
 /// Why a request from the CLI is refused: it was built for another contract.
@@ -149,6 +175,37 @@ mod tests {
         // A release's, stamped with its commit (cli/build.rs).
         let stamped = cli_user_agent("0.0.0+d6bb92e4a7a2");
         assert_eq!(of(&[stamped.as_bytes()]), Ok(()));
+    }
+
+    #[test]
+    fn an_agent_name_is_short_lowercase_letters_digits_dots_and_hyphens() {
+        for name in [
+            "claude-code",
+            "codex",
+            "gemini-cli",
+            "github-copilot",
+            "a",
+            "0",
+            "kiro.dev",
+            "a-",
+            &"a".repeat(32),
+        ] {
+            assert!(is_agent_name(name), "{name}");
+        }
+        for name in [
+            "",
+            "-codex",
+            ".codex",
+            "Claude-Code",
+            "claude code",
+            "claude_code",
+            "claude-code/1.0",
+            "codé",
+            "codex\n",
+            &"a".repeat(33),
+        ] {
+            assert!(!is_agent_name(name), "{name:?}");
+        }
     }
 
     #[test]
