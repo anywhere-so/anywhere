@@ -1,0 +1,5 @@
+title = "Both"
+
+[processes]
+web = "a"
+worker = "b"

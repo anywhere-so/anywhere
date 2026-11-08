@@ -1,0 +1,4 @@
+title = "Node web app"
+
+[processes]
+web = "node server.js"

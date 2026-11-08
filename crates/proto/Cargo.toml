@@ -1,0 +1,12 @@
+[package]
+name = "anywhere-exec-protocol"
+version = "0.0.0"
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+[dependencies]
+prost.workspace = true
+[build-dependencies]
+prost-build.workspace = true
+[lints]
+workspace = true

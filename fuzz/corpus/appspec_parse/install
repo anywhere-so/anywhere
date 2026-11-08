@@ -1,0 +1,7 @@
+title = "Node"
+install = "npm ci"
+install_files = ["package.json", "package-lock.json"]
+build = "npm run build"
+
+[processes]
+web = "node server.js"

@@ -1,0 +1,14 @@
+syntax = "proto3";
+
+package platform.errors.v1;
+
+// An error, with the same fields as the control API's: what went wrong, how to
+// fix it, and whether trying again later could work.
+message Error {
+  // A stable code, such as sandbox_start_failed, that callers can match on.
+  string code = 1;
+  // What went wrong and how to fix it.
+  string message = 2;
+  // Whether sending the same command again later is safe and could work.
+  bool retryable = 3;
+}

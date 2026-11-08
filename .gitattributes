@@ -1,0 +1,2 @@
+# Fuzz seeds are raw parser input; preserve their bytes.
+fuzz/corpus/** -text -diff

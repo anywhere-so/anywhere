@@ -1,0 +1,9 @@
+/target/
+/fuzz/target/
+/fuzz/artifacts/
+.DS_Store
+__pycache__/
+.env
+.env.*
+
+/dist/

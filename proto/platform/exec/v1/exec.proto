@@ -1,0 +1,83 @@
+syntax = "proto3";
+
+package platform.exec.v1;
+
+import "platform/errors/v1/errors.proto";
+
+// The CLI opens /v1/apps/<address>/exec and exchanges command I/O with
+// its app's exec endpoint. The command runs in /app with the app's environment.
+//
+// The WebSocket's request as it reaches the exec server is `GET /`, with no
+// query. Each binary WebSocket message holds one ClientMessage from the CLI,
+// or one ServerMessage back, and is at most 65 KiB (64 KiB of stream bytes plus
+// Protobuf framing). The first ClientMessage is a Start, within 10 seconds of
+// the WebSocket opening.
+//
+// The command reads the CLI's standard input from Stdin messages until
+// CloseStdin, and writes to the CLI's standard output and standard error as
+// Stdout and Stderr messages. Once the command exits and its output pipes
+// close, the exec server sends Exited with the command's exit status and closes
+// the WebSocket with 1000.
+
+// A message from the CLI to the exec server.
+message ClientMessage {
+  oneof kind {
+    // Starts the command; must be the first message on the connection.
+    Start start = 1;
+    // A chunk of standard input for the running command, at most 64 KiB.
+    Stdin stdin = 2;
+    // Closes the command's standard input pipe (EOF).
+    CloseStdin close_stdin = 3;
+  }
+}
+
+// Starts a command in /app with the app's environment.
+message Start {
+  // The program to run, either a path or a name on PATH. Must not be empty.
+  string command = 1;
+  // The arguments passed to the program, not including argv[0].
+  repeated string args = 2;
+}
+
+// Standard input bytes for the running command.
+message Stdin {
+  bytes data = 1;
+}
+
+// Closes the running command's standard input.
+message CloseStdin {}
+
+// A message from the exec server to the CLI.
+message ServerMessage {
+  oneof kind {
+    // The command has spawned, and Stdin / Stdout / Stderr may flow.
+    Started started = 1;
+    // A chunk of the command's standard output.
+    Stdout stdout = 2;
+    // A chunk of the command's standard error.
+    Stderr stderr = 3;
+    // The command has exited and all of its output has been sent.
+    Exited exited = 4;
+    // Why the command couldn't start or the connection is closing.
+    platform.errors.v1.Error error = 5;
+  }
+}
+
+// The command has started.
+message Started {}
+
+// Standard output bytes from the command.
+message Stdout {
+  bytes data = 1;
+}
+
+// Standard error bytes from the command.
+message Stderr {
+  bytes data = 1;
+}
+
+// How the command ended.
+message Exited {
+  // Its exit code, or 128 plus the signal number if a signal ended it.
+  int32 exit_code = 1;
+}

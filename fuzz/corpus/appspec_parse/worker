@@ -1,0 +1,4 @@
+title = "Ticker"
+
+[processes]
+worker = "node worker.js"

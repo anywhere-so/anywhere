@@ -1,0 +1,29 @@
+[package]
+name = "anywhere-api-types"
+version = "0.0.0"
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+base64.workspace = true
+blake3.workspace = true
+naming.workspace = true
+thiserror.workspace = true
+appspec.workspace = true
+chrono.workspace = true
+# The free-form answer that streams an app's logs.
+http.workspace = true
+manifest.workspace = true
+schemars.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+unicode-properties.workspace = true
+uuid.workspace = true
+
+[dev-dependencies]
+chrono = { workspace = true, features = ["clock"] }
+# The spec states the longest secret name, which the naming rules set.
+
+[lints]
+workspace = true

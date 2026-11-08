@@ -1,0 +1,55 @@
+name: Release build checks
+on: [push, pull_request, workflow_dispatch]
+permissions:
+  contents: read
+jobs:
+  macos:
+    runs-on: macos-26
+    timeout-minutes: 30
+    env:
+      MACOSX_DEPLOYMENT_TARGET: "13.0"
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - uses: jdx/mise-action@2d8d4cafcbd33be2ea37d2b6f5ad595363d1f1ca
+        with:
+          version: 2026.10.7
+      - name: Build and run both Mac architectures
+        shell: bash
+        run: |
+          set -euo pipefail
+          mise exec -- rustup target add --toolchain 1.99.0 x86_64-apple-darwin
+          mise exec -- cargo build --release --locked -p anywhere --target aarch64-apple-darwin --target x86_64-apple-darwin 2>&1 | tee "$RUNNER_TEMP/build.log"
+          if grep -F 'was built for newer' "$RUNNER_TEMP/build.log"; then exit 1; fi
+          target/aarch64-apple-darwin/release/anywhere --version
+          target/aarch64-apple-darwin/release/anywhere licenses > "$RUNNER_TEMP/licenses.txt"
+          arch -x86_64 target/x86_64-apple-darwin/release/anywhere --version
+          arch -x86_64 target/x86_64-apple-darwin/release/anywhere licenses > "$RUNNER_TEMP/intel-licenses.txt"
+          mise exec -- python3 tools/release.py aarch64-apple-darwin
+          mise exec -- python3 tools/release.py x86_64-apple-darwin
+  linux:
+    runs-on: ubuntu-26.04
+    timeout-minutes: 30
+    env:
+      CC_x86_64_unknown_linux_musl: musl-gcc
+      CFLAGS_x86_64_unknown_linux_musl: -march=x86-64
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - uses: jdx/mise-action@2d8d4cafcbd33be2ea37d2b6f5ad595363d1f1ca
+        with:
+          version: 2026.10.7
+      - name: Build and run the static Linux CLI
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get update -q
+          sudo apt-get install -y --no-install-recommends musl-tools=1.2.5-3build1 musl-dev=1.2.5-3build1 musl=1.2.5-3build1
+          mise exec -- rustup target add --toolchain 1.99.0 x86_64-unknown-linux-musl
+          mise exec -- cargo build --release --locked -p anywhere --target x86_64-unknown-linux-musl
+          if readelf -l target/x86_64-unknown-linux-musl/release/anywhere | grep -F INTERP; then exit 1; fi
+          target/x86_64-unknown-linux-musl/release/anywhere --version
+          target/x86_64-unknown-linux-musl/release/anywhere licenses > "$RUNNER_TEMP/licenses.txt"
+          mise exec -- python3 tools/release.py x86_64-unknown-linux-musl

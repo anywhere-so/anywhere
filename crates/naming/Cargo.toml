@@ -1,0 +1,15 @@
+[package]
+name = "naming"
+version = "0.0.0"
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+thiserror.workspace = true
+http.workspace = true
+psl.workspace = true
+uuid.workspace = true
+
+[lints]
+workspace = true

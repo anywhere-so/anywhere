@@ -1,0 +1,5 @@
+title = "Live chat"
+build = "npm ci --omit=dev"
+
+[processes]
+web = "node server.js"

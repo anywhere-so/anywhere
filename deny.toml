@@ -1,0 +1,43 @@
+
+[graph]
+all-features = true
+targets = ["x86_64-unknown-linux-musl", "x86_64-apple-darwin", "aarch64-apple-darwin"]
+
+[advisories]
+yanked = "deny"
+ignore = []
+
+[licenses]
+allow = ["Apache-2.0", "BSD-3-Clause", "CDLA-Permissive-2.0", "ISC", "MIT", "MIT-0", "Unicode-3.0", "Zlib"]
+private = { ignore = true }
+
+
+[[licenses.exceptions]]
+crate = "progenitor"  # generates the CLI's control API client, in its build script
+allow = ["MPL-2.0"]
+
+[[licenses.exceptions]]
+crate = "progenitor-impl"  # progenitor's generator itself
+allow = ["MPL-2.0"]
+
+[[licenses.exceptions]]
+crate = "progenitor-client"  # what the generated client runs on
+allow = ["MPL-2.0"]
+
+[[licenses.exceptions]]
+crate = "libfuzzer-sys"  # LLVM's libFuzzer, which only the fuzz targets in fuzz/ link
+allow = ["NCSA"]
+
+[bans]
+multiple-versions = "warn"
+wildcards = "deny"
+allow-wildcard-paths = true
+deny = [
+  { crate = "ring", use-instead = "aws-lc-rs", reason = "aws-lc-rs is our one crypto library, through rustls" },
+  { crate = "openssl-sys", use-instead = "rustls", reason = "rustls is our one TLS library" },
+  { crate = "native-tls", use-instead = "rustls", reason = "rustls is our one TLS library" },
+]
+
+[sources]
+unknown-registry = "deny"
+unknown-git = "deny"
