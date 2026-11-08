@@ -16,8 +16,8 @@ pub struct UsageQuery {
     /// The range: `1h`, `24h`, `7d` or `30d`, up to now. Without it, `24h`;
     /// anything else is `range_invalid`.
     pub range: Option<String>,
-    /// The username of the app's owner, for an app whose owner made you a
-    /// developer. Without it, the app is yours.
+    /// The username of the app's owner, for an app whose owner lets you edit
+    /// it. Without it, the app is yours.
     pub owner: Option<String>,
 }
 
@@ -195,7 +195,7 @@ pub struct UsagePoint {
     /// The step's cost at the price book effective at `at`, in integer
     /// micro-dollars, with each component rounded down. Priced from this
     /// step's averages and seconds, so it may differ from the hourly ledger.
-    /// None for a developer; only the owner sees costs.
+    /// None for someone who can edit it; only the owner sees costs.
     pub cost_microusd: Option<u64>,
     /// The step's start, or in the 1h range, the reading's time, its counts
     /// covering the `seconds` before it.

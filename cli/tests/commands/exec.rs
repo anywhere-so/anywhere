@@ -70,11 +70,11 @@ async fn exec_never_prints_the_ticket_when_the_upgrade_connection_drops() {
 
 #[tokio::test]
 async fn exec_keeps_the_platforms_refusals_of_an_app_you_dont_edit() {
-    // A member asks for a ticket.
+    // Someone who can only use the app asks for a ticket.
     let server = Server::start(vec![Reply {
         status: 403,
         ..reply(json!({"code": "member_only",
-            "message": "alice made you a member of wiki, to use it but not change it; ask them to make you a developer",
+            "message": "alice lets you use wiki but not edit it; ask them for edit access",
             "retryable": false}))
     }])
     .await;
@@ -87,7 +87,7 @@ async fn exec_keeps_the_platforms_refusals_of_an_app_you_dont_edit() {
         error["message"]
             .as_str()
             .unwrap()
-            .contains("make you a developer"),
+            .contains("ask them for edit access"),
         "{error}"
     );
     assert_eq!(
@@ -95,7 +95,7 @@ async fn exec_keeps_the_platforms_refusals_of_an_app_you_dont_edit() {
         ["POST /v1/apps/wiki/tickets?owner=alice HTTP/1.1"]
     );
 
-    // The gateway finds they're no longer a developer when the exec opens.
+    // The gateway finds they can no longer edit the app when the exec opens.
     let server = Server::start(vec![
         Reply {
             status: 201,
@@ -105,7 +105,7 @@ async fn exec_keeps_the_platforms_refusals_of_an_app_you_dont_edit() {
         Reply {
             status: 403,
             ..reply(json!({"code": "not_a_developer",
-                "message": "you're no longer a developer of alice-wiki; ask its owner",
+                "message": "you can no longer edit alice-wiki; ask its owner",
                 "retryable": false}))
         },
     ])

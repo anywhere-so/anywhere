@@ -22,8 +22,8 @@ fn details() -> Value {
 #[tokio::test]
 async fn lists_the_people_an_app_is_shared_with_and_who_has_yet_to_sign_up() {
     let shares = json!({"shares":[
-        {"email":EMAIL,"username":"jo","role":"developer","created_at":"2026-10-12T00:00:00Z"},
-        {"email":"sam@example.test","username":null,"role":"member",
+        {"email":EMAIL,"username":"jo","role":"edit","created_at":"2026-10-12T00:00:00Z"},
+        {"email":"sam@example.test","username":null,"role":"use",
             "created_at":"2026-10-12T00:01:00Z"}]});
     let server = Server::start(vec![reply(shares.clone())]).await;
     // As the CLI's other results leave out what's null, a person yet to sign
@@ -41,7 +41,7 @@ async fn lists_the_people_an_app_is_shared_with_and_who_has_yet_to_sign_up() {
     assert!(output.status.success(), "{}", text(&output.stderr));
     assert_eq!(
         text(&output.stdout),
-        "jo@example.test\tjo\tdeveloper\nsam@example.test\twaiting for them to sign up\tmember\n"
+        "jo@example.test\tjo\tcan edit\nsam@example.test\twaiting for them to sign up\tcan use\n"
     );
     assert!(
         server
@@ -82,7 +82,7 @@ async fn adds_someone_waits_for_the_gateways_and_prints_the_link_to_send_them() 
         ]
     );
     // The email goes in the body, never the path, and with no role given, none
-    // is: a new share is a member's, and an existing one keeps its role.
+    // is: a new share can use the app, and an existing one keeps its access.
     assert_eq!(server.bodies(), [json!({ "email": EMAIL, "role": null })]);
     let started: Value =
         serde_json::from_str(text(&output.stderr).lines().next().unwrap()).unwrap();
@@ -221,13 +221,7 @@ async fn makes_someone_a_developer_and_passes_on_the_warning() {
     let server = Server::start(replies()).await;
     let output = server
         .run(&[
-            "--json",
-            "shares",
-            "add",
-            "hello",
-            EMAIL,
-            "--role",
-            "developer",
+            "--json", "shares", "add", "hello", EMAIL, "--access", "edit",
         ])
         .await;
     assert_eq!(
@@ -235,14 +229,11 @@ async fn makes_someone_a_developer_and_passes_on_the_warning() {
         json!({"operation": ID, "app": "hello", "email": EMAIL,
             "url": "https://dev-hello.anywhereapps.test", "warning": warning})
     );
-    assert_eq!(
-        server.bodies(),
-        [json!({ "email": EMAIL, "role": "developer" })]
-    );
+    assert_eq!(server.bodies(), [json!({ "email": EMAIL, "role": "edit" })]);
 
     let server = Server::start(replies()).await;
     let output = server
-        .run(&["shares", "add", "hello", EMAIL, "--role", "developer"])
+        .run(&["shares", "add", "hello", EMAIL, "--access", "edit"])
         .await;
     assert!(output.status.success(), "{}", text(&output.stderr));
     assert!(
@@ -261,19 +252,16 @@ async fn makes_someone_a_developer_and_passes_on_the_warning() {
     .await;
     success(
         &server
-            .run(&[
-                "--json", "shares", "add", "hello", EMAIL, "--role", "member",
-            ])
+            .run(&["--json", "shares", "add", "hello", EMAIL, "--access", "use"])
             .await,
     );
-    assert_eq!(
-        server.bodies(),
-        [json!({ "email": EMAIL, "role": "member" })]
-    );
+    assert_eq!(server.bodies(), [json!({ "email": EMAIL, "role": "use" })]);
 
-    // Only these two roles.
+    // Only these two access levels.
     let output = server
-        .run(&["--json", "shares", "add", "hello", EMAIL, "--role", "owner"])
+        .run(&[
+            "--json", "shares", "add", "hello", EMAIL, "--access", "owner",
+        ])
         .await;
     assert_eq!(output.status.code(), Some(2));
     failure(&output, "argument_invalid");

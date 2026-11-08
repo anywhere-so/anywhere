@@ -56,7 +56,7 @@ pub enum ResultData {
     Shares(ShareList),
     Access(control_api::AppAccess),
     /// A share that every gateway admits, the link to send its person, and,
-    /// for one that makes them a developer, what that lets them do.
+    /// for one that lets them edit the app, what that lets them do.
     Shared {
         operation: Uuid,
         app: String,
@@ -386,7 +386,7 @@ fn show(result: ResultData) {
             // As OWNER/NAME, which commands take as it is.
             for app in &shared {
                 println!(
-                    "{}/{}\tshared with you as {}\t{}",
+                    "{}/{}\tshared with you, {}\t{}",
                     plain(&app.owner),
                     plain(&app.name),
                     role(app.role),
@@ -570,8 +570,8 @@ fn show_warning(warning: &Warning) {
 
 fn role(role: ShareRole) -> &'static str {
     match role {
-        ShareRole::Member => "member",
-        ShareRole::Developer => "developer",
+        ShareRole::Use => "can use",
+        ShareRole::Edit => "can edit",
     }
 }
 

@@ -18,7 +18,7 @@ pub enum Command {
     Show {
         workspace: String,
     },
-    /// Show each member's access to a team app (none, use or develop), why they have it, and any per-app grant.
+    /// Show each member's access to a team app (none, use or edit), why they have it, and any per-app grant. Can edit means they change it with their agent (pull, deploy, exec, secrets, logs), which needs a vibecoder seat; can use means they open it.
     Sharing {
         workspace: String,
         app: String,
@@ -44,6 +44,7 @@ pub enum Command {
         user: Uuid,
         #[arg(long)]
         role: String,
+        /// Whether they hold a vibecoder seat.
         #[arg(long, action=ArgAction::Set, required=true)]
         developer: bool,
     },
@@ -58,21 +59,22 @@ pub enum Command {
         #[arg(default_value = ".")]
         dir: PathBuf,
     },
-    /// Override one member's access to a team app: `developer` or `member` (use only). Owners and the app's creator always use and develop it, so a grant changes nothing for them.
+    /// Override one member's access to a team app: `--access edit` or `--access use`. Owners and the app's creator can always edit it, so a grant changes nothing for them. Editing still needs a vibecoder seat.
     Grant {
         workspace: String,
         app: String,
         user: Uuid,
+        /// `edit` (change it with their agent) or `use` (open it).
         #[arg(long, required = true)]
-        role: String,
+        access: String,
     },
-    /// Remove a member's per-app grant, back to the workspace default: use on an app visible to everyone, plus develop with a funded seat; no access on a restricted app.
+    /// Remove a member's per-app grant, back to the workspace default: on an app visible to everyone, can use, or can edit with a vibecoder seat; no access on a restricted app.
     RevokeGrant {
         workspace: String,
         app: String,
         user: Uuid,
     },
-    /// `--everyone true` (the default for new team apps) lets every member use the app and every seated member develop it; `--everyone false` restricts it to owners, its creator and members granted.
+    /// `--everyone true` (the default for new team apps) lets every member use the app and every vibecoder edit it; `--everyone false` restricts it to owners, its creator and members granted.
     Visibility {
         workspace: String,
         app: String,
@@ -194,12 +196,12 @@ pub async fn run(command: Command, output: &mut Output) -> Result<ResultData, Cl
             workspace,
             app,
             user,
-            role,
+            access,
         } => {
-            let role = match role.as_str() {
-                "member" => ShareRole::Member,
-                "developer" => ShareRole::Developer,
-                _ => return Err(argument("--role must be member or developer")),
+            let role = match access.as_str() {
+                "use" => ShareRole::Use,
+                "edit" => ShareRole::Edit,
+                _ => return Err(argument("--access must be edit or use")),
             };
             request!(control.client.workspace_app_grant(
                 &workspace,

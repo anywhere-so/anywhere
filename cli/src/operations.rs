@@ -13,7 +13,7 @@ use crate::output::{self, Output, ResultData};
 use crate::secrets::unconfirmed;
 use crate::settings::API_TIMEOUT;
 
-/// The code of a deploy that its owner or a developer cancelled.
+/// The code of a deploy that its owner or someone who can edit it cancelled.
 const DEPLOY_CANCELLED: &str = "deploy_cancelled";
 
 pub const POLL_INTERVAL: Duration = Duration::from_millis(500);

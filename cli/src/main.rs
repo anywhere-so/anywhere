@@ -135,7 +135,7 @@ enum Command {
         /// The folder containing app.toml; its name is the app's name, unless --app names the app.
         #[arg(default_value = ".")]
         dir: PathBuf,
-        /// The app to deploy the folder to, whatever the folder's called: NAME, one of yours, or OWNER/NAME, one whose owner made you a developer. Without it, the folder's name names an app of yours, which the deploy makes if you have none by that name.
+        /// The app to deploy the folder to, whatever the folder's called: NAME, one of yours, or OWNER/NAME, one whose owner lets you edit it. Without it, the folder's name names an app of yours, which the deploy makes if you have none by that name.
         #[arg(long)]
         app: Option<String>,
     },
@@ -149,7 +149,7 @@ enum Command {
     },
     /// Copy a folder from the app's disk into a local folder, through `anywhere exec`.
     Pull {
-        /// The app: NAME, one of yours, or OWNER/NAME, one whose owner made you a developer.
+        /// The app: NAME, one of yours, or OWNER/NAME, one whose owner lets you edit it.
         app: String,
         /// The folder in the app to copy, such as /app. A relative path is inside /app.
         path: String,
@@ -177,7 +177,7 @@ enum Command {
     },
     /// Show what an app used over a range against its size's limits: its CPU, memory, disk and network now, on average and at their peak, and each problem it ran into, such as running out of memory, with the app.toml change that fixes it. It changes nothing.
     Usage {
-        /// The app: NAME, one of yours, or OWNER/NAME, one whose owner made you a developer. Without it, the signed-in account’s usage this period.
+        /// The app: NAME, one of yours, or OWNER/NAME, one whose owner lets you edit it. Without it, the signed-in account’s usage this period.
         app: Option<String>,
         /// An app's range, up to now: 1h (a point every 30 seconds), 24h (every 5 minutes, the default), 7d or 30d (every hour). Needs APP.
         #[arg(long, value_enum)]
@@ -191,14 +191,14 @@ enum Command {
         #[command(subcommand)]
         command: Secrets,
     },
-    /// Share one of your apps with people by their email, list them, or remove one. A member uses it, signed in with that email; a developer also deploys to it, runs commands in it, reads its logs and sets its secrets. Only you share it.
+    /// Share one of your apps with people by their email, list them, or remove one. Someone who can use it opens it, signed in with that email; someone who can edit it also changes it with their agent: pulls it, deploys to it, runs commands in it, reads its logs and sets its secrets. Only you share it.
     Shares {
         #[command(subcommand)]
         command: Shares,
     },
     /// Run a command in the app's sandbox, as root in /app, with its environment and secrets: while it runs, or once it has crashed, to repair it, but not during a deploy.
     Exec {
-        /// The app, if not given as the first argument before `--`: NAME, one of yours, or OWNER/NAME, one whose owner made you a developer.
+        /// The app, if not given as the first argument before `--`: NAME, one of yours, or OWNER/NAME, one whose owner lets you edit it.
         #[arg(long)]
         app: Option<String>,
         /// The app (unless `--app` is given), followed by `--` and the command and its arguments.
@@ -225,11 +225,11 @@ enum Apps {
         #[arg(value_enum)]
         visibility: Option<Access>,
     },
-    /// List your apps, then the apps shared with you, as OWNER/NAME with your role in each.
+    /// List your apps, then the apps shared with you, as OWNER/NAME with your access to each (use or edit).
     List,
     /// Show an app's status and its recent deploys, with who started each.
     Inspect {
-        /// The app: NAME, one of yours, or OWNER/NAME, one whose owner made you a developer.
+        /// The app: NAME, one of yours, or OWNER/NAME, one whose owner lets you edit it.
         name: String,
     },
     /// Stop one of your apps and keep its disk, charged at the normal storage rate.
@@ -281,20 +281,20 @@ enum Secrets {
 
 #[derive(Debug, Subcommand)]
 enum Shares {
-    /// List the people the app is shared with: each email, their username, or that they haven't signed up yet, and their role.
+    /// List the people the app is shared with: each email, their username, or that they haven't signed up yet, and their access (use or edit).
     List {
         /// The app's name, which must be one of yours.
         app: String,
     },
-    /// Share the app with someone, or change their role, wait until every gateway has it, and print the app's link to send them.
+    /// Share the app with someone, or change their access, wait until every gateway has it, and print the app's link to send them.
     Add {
         /// The app's name, which must be one of yours, with a web address.
         app: String,
         /// The email they sign in with. Someone with no account yet signs up with it.
         email: String,
-        /// What they may do. Without it, a new share is a member's and an existing one keeps its role. Someone becomes a developer only once they have an account.
+        /// What they may do: `use` opens it, `edit` also changes it with their agent. Without it, a new share is `use` and an existing one keeps its access. Someone can be given `edit` only once they have an account.
         #[arg(long, value_enum)]
-        role: Option<Role>,
+        access: Option<Level>,
     },
     /// Stop sharing the app with someone, and wait until they're cut off.
     Remove {
@@ -345,25 +345,25 @@ impl From<Access> for control_api::Visibility {
 
 /// What a share lets its person do.
 #[derive(Clone, Copy, Debug, ValueEnum)]
-enum Role {
-    /// Uses the app, in a browser or with an agent token.
-    Member,
-    /// Also deploys to it, runs commands in it as root, and reads its files, logs and secrets.
-    Developer,
+enum Level {
+    /// Can use: opens the app, in a browser or with an agent token.
+    Use,
+    /// Can edit: also pulls it, deploys to it, runs commands in it as root, and reads its files, logs and secrets.
+    Edit,
 }
 
-impl From<Role> for control_api::ShareRole {
-    fn from(role: Role) -> Self {
-        match role {
-            Role::Member => Self::Member,
-            Role::Developer => Self::Developer,
+impl From<Level> for control_api::ShareRole {
+    fn from(level: Level) -> Self {
+        match level {
+            Level::Use => Self::Use,
+            Level::Edit => Self::Edit,
         }
     }
 }
 
 #[derive(Debug, Args)]
 struct Target {
-    /// The app: NAME, one of yours, or OWNER/NAME, one whose owner made you a developer. Without it, the app in the working folder, which must hold its app.toml; there, `set` works before the app's first deploy too.
+    /// The app: NAME, one of yours, or OWNER/NAME, one whose owner lets you edit it. Without it, the app in the working folder, which must hold its app.toml; there, `set` works before the app's first deploy too.
     #[arg(long)]
     app: Option<String>,
 }
@@ -617,8 +617,8 @@ async fn run(
             command: Shares::List { app },
         } => shares::list(&app, *output).await.map(Outcome::Data),
         Command::Shares {
-            command: Shares::Add { app, email, role },
-        } => shares::add(&app, &email, role.map(Into::into), output)
+            command: Shares::Add { app, email, access },
+        } => shares::add(&app, &email, access.map(Into::into), output)
             .await
             .map(Outcome::Data),
         Command::Shares {

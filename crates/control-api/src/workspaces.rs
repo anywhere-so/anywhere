@@ -27,10 +27,11 @@ pub struct Workspace {
     pub title: String,
     pub kind: WorkspaceKind,
     pub role: WorkspaceRole,
+    /// Whether you hold a vibecoder seat here.
     pub developer: bool,
     pub can_create: bool,
     pub active: bool,
-    /// Funded seat capacity is visible only to workspace owners.
+    /// How many vibecoder seats are paid for; visible only to workspace owners.
     pub paid_developers: Option<u32>,
 }
 
@@ -90,6 +91,7 @@ pub struct WorkspaceMember {
     pub user: Uuid,
     pub username: String,
     pub role: WorkspaceRole,
+    /// Whether they hold a vibecoder seat.
     pub developer: bool,
     pub joined_at: DateTime<Utc>,
 }
@@ -116,6 +118,7 @@ pub struct WorkspaceActivity {
 #[serde(deny_unknown_fields)]
 pub struct WorkspaceMemberUpdate {
     pub role: WorkspaceRole,
+    /// Whether they hold a vibecoder seat.
     pub developer: bool,
 }
 
@@ -168,7 +171,8 @@ impl fmt::Debug for WorkspaceInvitationAccept {
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Deserialize, Serialize, JsonSchema)]
 pub struct AppCapabilities {
-    pub develop: bool,
+    /// Whether you can edit it: pull, deploy, exec, secrets and logs.
+    pub edit: bool,
     pub manage: bool,
 }
 
@@ -202,10 +206,11 @@ pub struct WorkspaceAppPath {
 pub enum AppAccessLevel {
     /// They can't open it.
     None,
-    /// They open and use it.
+    /// Can use: they open it.
     Use,
-    /// They also deploy, exec, pull, read its logs and set its secrets.
-    Develop,
+    /// Can edit: they also change it with their agent (pull, deploy, exec,
+    /// secrets and logs).
+    Edit,
 }
 
 /// Why a person has their access to a team app.
@@ -231,7 +236,7 @@ pub struct WorkspaceAppGrant {
     pub role: WorkspaceRole,
     /// Whether they made the app.
     pub creator: bool,
-    /// Whether they hold a funded vibecoder seat, which developing needs.
+    /// Whether they hold a funded vibecoder seat, which editing needs.
     pub seat: bool,
     /// What they can do with the app now.
     pub access: AppAccessLevel,
@@ -246,8 +251,8 @@ pub struct WorkspaceAppGrant {
     pub default_access: AppAccessLevel,
 }
 
-/// Who uses and develops a team app. On an app visible to everyone, each
-/// member uses it and a seated one develops it, unless a grant says otherwise;
+/// Who can use and edit a team app. On an app visible to everyone, each
+/// member can use it and a vibecoder can edit it, unless a grant says otherwise;
 /// on a restricted one, only owners, its creator and people granted reach it.
 #[derive(Clone, Debug, Deserialize, Serialize, JsonSchema)]
 pub struct WorkspaceAppAccess {
