@@ -22,22 +22,22 @@ Changes restart a running app. The CLI follows the operation for up to 22 minute
 
 ## Sharing
 
-Apps default to restricted access; sharing grants signed-in access without making the app public. Members can use the app. Developers can also deploy, exec as root, read files/logs/secrets and change secrets for that app. Only the owner manages shares. Web/static apps can be shared; background apps return `app_has_no_address`.
+Apps default to restricted access; sharing grants signed-in access without making the app public. Access is "can use" (open the app) or "can edit" (also deploy, exec as root, pull, read files/logs/secrets and change secrets for that app, with their agent). Only the owner manages shares. Web/static apps can be shared; background apps return `app_has_no_address`.
 
 ```sh
 anywhere shares add notes jo@example.com
-anywhere shares add notes jo@example.com --role developer
+anywhere shares add notes jo@example.com --access edit
 anywhere shares list notes
 anywhere shares remove notes jo@example.com
 ```
 
-Default new role is member. Before granting developer access, explain its permissions and that removing access does not undo changes or stop work left running; there is no rollback. Developer access requires an existing account (`developer_needs_account`); share as member first if necessary, then grant developer after the list shows their username. `--role member` downgrades; omitting `--role` preserves an existing share's role.
+A new share defaults to `--access use`. Before granting edit access, explain its permissions and that removing access does not undo changes or stop work left running; there is no rollback. Edit access requires an existing account (`developer_needs_account`); share with use access first if necessary, then grant edit after the list shows their username. `--access use` downgrades; omitting `--access` preserves an existing share's access.
 
-Add waits for access to take effect and prints the URL. Give that link to the user to send; the recipient signs in with the shared email, creating an account if needed. Remove waits for access to end, including exec, uploads and log follows. Listing shows email, username/signup status and role. Follow errors such as `invalid_email`, `share_with_self`, `already_shared`, `no_such_share` and `owner_only`; do not infer a successful role change from a failed command.
+Add waits for access to take effect and prints the URL. Give that link to the user to send; the recipient signs in with the shared email, creating an account if needed. Remove waits for access to end, including exec, uploads and log follows. Listing shows email, username/signup status and access (can use or can edit). Follow errors such as `invalid_email`, `share_with_self`, `already_shared`, `no_such_share` and `owner_only`; do not infer a successful access change from a failed command.
 
 ## Apps shared with the user
 
-`anywhere apps list` and the portal's "Shared with me" show `OWNER/NAME` and the role. In an unbound folder, a bare name targets the personal workspace. A bound folder uses its saved workspace and app IDs; conflicting names fail. Read [workspaces](workspaces.md) for team access. Keep shared checkouts under `~/.anywhere/apps/OWNER/NAME` (or `.anywhere/apps/OWNER/NAME` in a project repo) so they never collide with the user's own apps or pollute the current repository:
+`anywhere apps list` and the portal's "Shared with me" show `OWNER/NAME` and the user's access (can use or can edit). In an unbound folder, a bare name targets the personal workspace. A bound folder uses its saved workspace and app IDs; conflicting names fail. Read [workspaces](workspaces.md) for team access. Keep shared checkouts under `~/.anywhere/apps/OWNER/NAME` (or `.anywhere/apps/OWNER/NAME` in a project repo) so they never collide with the user's own apps or pollute the current repository:
 
 ```sh
 anywhere pull alice/wiki /app ~/.anywhere/apps/alice/wiki
@@ -49,7 +49,7 @@ anywhere apps inspect alice/wiki
 
 Preserve `OWNER/NAME` in deploy, pull, exec, inspect, logs and secrets. Pull prints the qualified redeploy command. A successful folder deploy binds its destination. Keep that binding for later deploys, logs and secrets. An unbound folder with multiple available workspaces needs an explicit destination.
 
-`member_only` means use is allowed but changes require developer access. `no_such_app` means check the shared list/target. `not_a_developer`, `upload_access_ended` or `deploy_access_ended` means access ended: stop and ask the owner. Interrupted exec/pull/log streams can also mean expiry or access removal; a new read identifies the cause.
+`member_only` means the user can use the app but not edit it; edit access is needed. `no_such_app` means check the shared list/target. `not_a_developer` (they can no longer edit it), `upload_access_ended` or `deploy_access_ended` means access ended: stop and ask the owner. Interrupted exec/pull/log streams can also mean expiry or access removal; a new read identifies the cause.
 
 ## The Drive
 
@@ -91,4 +91,4 @@ Pause stops web and background apps, keeps their disks, and charges storage at t
 Requests cannot wake it. Deploy and exec refuse with `app_paused` (not retryable): resume it first with `anywhere apps resume <app>`.
 `app_busy` is retryable after the current deploy ends or is cancelled; `already_paused`, `app_not_deployed`, and `not_paused` are not retryable. Deploy an app before pausing it.
 A usage-paused app can be paused by its owner so added usage or a new period will not resume it. Resume refuses with `usage_limit_reached` while account usage enforcement has stopped the account: add usage or wait for the period to reset, then resume it.
-Developers get `owner_only`; ask the owner to pause or resume.
+People who can edit it get `owner_only`; ask the owner to pause or resume.

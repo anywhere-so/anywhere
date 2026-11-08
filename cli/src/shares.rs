@@ -1,5 +1,5 @@
-//! Sharing one of your apps by email: list the people, add one as a member or
-//! a developer, or remove one. Each change waits for its operation, which ends
+//! Sharing one of your apps by email: list the people, add one who can use it
+//! or can edit it, or remove one. Each change waits for its operation, which ends
 //! once every gateway has applied it. Only an app's owner shares it, so these
 //! take only an app of your own.
 
@@ -54,7 +54,7 @@ pub async fn add(
     let url = details.app.url.ok_or_else(|| CliError::AppHasNoAddress {
         app: app.as_str().to_owned(),
     })?;
-    // Without a role, a new share is a member's and an existing one keeps its own.
+    // Without an access level, a new share can use the app and an existing one keeps its own.
     let request = ShareAddRequest {
         email: email.to_owned(),
         role,
@@ -67,7 +67,7 @@ pub async fn add(
         .map_err(|error| {
             unconfirmed(
                 control.error(error),
-                "repeating it is safe: a share that's already there stays as it is, or takes the role given",
+                "repeating it is safe: a share that's already there stays as it is, or takes the access given",
             )
         })?
         .into_inner();

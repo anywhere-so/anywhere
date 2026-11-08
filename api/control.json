@@ -334,7 +334,7 @@
                 "$ref": "#/components/schemas/Warning"
               }
             ],
-            "description": "For a secret change that succeeded on a web app with no address yet: why, and what gives it one. For a share that makes someone a developer: what a developer can do that removing them won't undo. A deploy may also carry advice recorded when it was admitted.",
+            "description": "For a secret change that succeeded on a web app with no address yet: why, and what gives it one. For a share that lets someone edit the app: what they can do that removing them won't undo. A deploy may also carry advice recorded when it was admitted.",
             "nullable": true
           }
         },
@@ -575,7 +575,7 @@
         "description": "A deploy of an app: the operation that writes its files, builds it and starts it.",
         "properties": {
           "by": {
-            "description": "The username of who started it: the app's owner, or one of its developers.",
+            "description": "The username of who started it: the app's owner, or someone who can edit it.",
             "type": "string"
           },
           "ended_at": {
@@ -995,16 +995,16 @@
         "description": "What a share lets its person do with the app.",
         "oneOf": [
           {
-            "description": "Uses the app, in a browser or with an agent token; what they may do in it is the app's to decide.",
+            "description": "Can use: opens the app, in a browser or with an agent token; what they may do in it is the app's to decide.",
             "enum": [
-              "member"
+              "use"
             ],
             "type": "string"
           },
           {
-            "description": "Also deploys to it, runs commands in it, reads its logs and sets its secrets; never shares it.",
+            "description": "Can edit: also changes it with their agent (pulls it, deploys to it, runs commands in it, reads its logs and sets its secrets); never shares it.",
             "enum": [
-              "developer"
+              "edit"
             ],
             "type": "string"
           }
@@ -1024,7 +1024,7 @@
                 "$ref": "#/components/schemas/ShareRole"
               }
             ],
-            "description": "What they may do: a new share without one is a member's, and an existing one keeps its role.",
+            "description": "What they may do: a new share without one is `use`, and an existing one keeps its role.",
             "nullable": true
           }
         },
@@ -1135,7 +1135,7 @@
         ]
       },
       "Ticket": {
-        "description": "A ticket for one of your apps, or one you're a developer of.",
+        "description": "A ticket for one of your apps, or one you can edit.",
         "properties": {
           "address": {
             "description": "The app's address, `<owner>-<app>`, which the service's path names, such as `/v1/apps/{address}/exec`.",
@@ -1416,7 +1416,7 @@
             "type": "integer"
           },
           "cost_microusd": {
-            "description": "The step's cost at the price book effective at `at`, in integer micro-dollars, with each component rounded down. Priced from this step's averages and seconds, so it may differ from the hourly ledger. None for a developer; only the owner sees costs.",
+            "description": "The step's cost at the price book effective at `at`, in integer micro-dollars, with each component rounded down. Priced from this step's averages and seconds, so it may differ from the hourly ledger. None for someone who can edit it; only the owner sees costs.",
             "format": "uint64",
             "minimum": 0,
             "nullable": true,
@@ -2206,6 +2206,7 @@
             "type": "boolean"
           },
           "developer": {
+            "description": "Whether you hold a vibecoder seat here.",
             "type": "boolean"
           },
           "id": {
@@ -2219,7 +2220,7 @@
             "type": "string"
           },
           "paid_developers": {
-            "description": "Funded seat capacity is visible only to workspace owners.",
+            "description": "How many vibecoder seats are paid for; visible only to workspace owners.",
             "format": "uint32",
             "minimum": 0,
             "nullable": true,
@@ -2294,7 +2295,8 @@
       },
       "AppCapabilities": {
         "properties": {
-          "develop": {
+          "edit": {
+            "description": "Whether you can edit it: pull, deploy, exec, secrets and logs.",
             "type": "boolean"
           },
           "manage": {
@@ -2302,7 +2304,7 @@
           }
         },
         "required": [
-          "develop",
+          "edit",
           "manage"
         ],
         "type": "object"
@@ -2320,7 +2322,7 @@
         "type": "object"
       },
       "WorkspaceAppAccess": {
-        "description": "Who uses and develops a team app. On an app visible to everyone, each member uses it and a seated one develops it, unless a grant says otherwise; on a restricted one, only owners, its creator and people granted reach it.",
+        "description": "Who can use and edit a team app. On an app visible to everyone, each member can use it and a vibecoder can edit it, unless a grant says otherwise; on a restricted one, only owners, its creator and people granted reach it.",
         "properties": {
           "everyone": {
             "type": "boolean"
@@ -2383,7 +2385,7 @@
             "description": "Their role in the workspace."
           },
           "seat": {
-            "description": "Whether they hold a funded vibecoder seat, which developing needs.",
+            "description": "Whether they hold a funded vibecoder seat, which editing needs.",
             "type": "boolean"
           },
           "source": {
@@ -2426,16 +2428,16 @@
             "type": "string"
           },
           {
-            "description": "They open and use it.",
+            "description": "Can use: they open it.",
             "enum": [
               "use"
             ],
             "type": "string"
           },
           {
-            "description": "They also deploy, exec, pull, read its logs and set its secrets.",
+            "description": "Can edit: they also change it with their agent (pull, deploy, exec, secrets and logs).",
             "enum": [
-              "develop"
+              "edit"
             ],
             "type": "string"
           }
@@ -2611,6 +2613,7 @@
       "WorkspaceMember": {
         "properties": {
           "developer": {
+            "description": "Whether they hold a vibecoder seat.",
             "type": "boolean"
           },
           "joined_at": {
@@ -2641,6 +2644,7 @@
         "additionalProperties": false,
         "properties": {
           "developer": {
+            "description": "Whether they hold a vibecoder seat.",
             "type": "boolean"
           },
           "role": {
@@ -2755,7 +2759,7 @@
     }
   },
   "info": {
-    "description": "Contract 13. The `anywhere` CLI says so in every request's User-Agent, `anywhere/<version> (contract 13)`, and the gateway refuses a CLI built for another contract, or one from before them (`anywhere/<version>` alone), with 400 `cli_outdated` before the request reaches this API, whatever its route or body. Its message says how to install the CLI this platform serves. Other clients are told nothing.",
+    "description": "Contract 14. The `anywhere` CLI says so in every request's User-Agent, `anywhere/<version> (contract 14)`, and the gateway refuses a CLI built for another contract, or one from before them (`anywhere/<version>` alone), with 400 `cli_outdated` before the request reaches this API, whatever its route or body. Its message says how to install the CLI this platform serves. Other clients are told nothing.",
     "title": "Control API",
     "version": "0.1.0"
   },
@@ -2787,7 +2791,7 @@
     },
     "/v1/apps/{app}": {
       "delete": {
-        "description": "Only its owner deletes it: a developer of it gets `owner_only`, and a member `member_only`. Its address, every share of it and its name go at once, so a deploy by that name makes a new app, with an empty disk. The operation succeeds once its host has stopped it and every gateway has dropped its address and shares and closed what was open to it. There's no trash and nothing restores it. While a deploy of it is under way, it's `app_busy`. Once it's deleted, sending it again answers `no_such_app`.",
+        "description": "Only its owner deletes it: someone who can edit it gets `owner_only`, and someone who can only use it `member_only`. Its address, every share of it and its name go at once, so a deploy by that name makes a new app, with an empty disk. The operation succeeds once its host has stopped it and every gateway has dropped its address and shares and closed what was open to it. There's no trash and nothing restores it. While a deploy of it is under way, it's `app_busy`. Once it's deleted, sending it again answers `no_such_app`.",
         "operationId": "app_delete",
         "parameters": [
           {
@@ -2800,7 +2804,7 @@
             }
           },
           {
-            "description": "The username of the app's owner, for an app whose owner made you a developer. Without it, the app is yours.",
+            "description": "The username of the app's owner, for an app whose owner lets you edit it. Without it, the app is yours.",
             "in": "query",
             "name": "owner",
             "schema": {
@@ -2843,7 +2847,7 @@
             }
           },
           {
-            "description": "The username of the app's owner, for an app whose owner made you a developer. Without it, the app is yours.",
+            "description": "The username of the app's owner, for an app whose owner lets you edit it. Without it, the app is yours.",
             "in": "query",
             "name": "owner",
             "schema": {
@@ -2870,7 +2874,7 @@
             "$ref": "#/components/responses/Error"
           }
         },
-        "summary": "One of your apps, or one you're a developer of, with its newest deploys."
+        "summary": "One of your apps, or one you can edit, with its newest deploys."
       }
     },
     "/v1/apps/{app}/access": {
@@ -2954,7 +2958,7 @@
     },
     "/v1/apps/{app}/deploys": {
       "post": {
-        "description": "It takes the app's `app.toml` and the list of its files. The deploy runs in the background: check its operation, and upload every file when it asks. It writes each file at `/app/<path>` on the app's disk, replacing what's there and touching nothing else, runs the app's build there, and then starts the app on what its disk holds, even if the build failed. An image app's deploy lists no files: it pulls the image `app.toml` names and writes its files over the app's disk, deleting nothing, and an app whose disk was made for the other kind is `image_disk_mismatch`. Without `owner`, a deploy makes your app if you have none by its name, and with `new_app`, only then; with `owner`, the app must be one you're a developer of. While no host has room for a new app, a deploy that would make one is refused with `host_full` (503, retryable), and nothing is made: try again later. Apps that already exist still deploy.",
+        "description": "It takes the app's `app.toml` and the list of its files. The deploy runs in the background: check its operation, and upload every file when it asks. It writes each file at `/app/<path>` on the app's disk, replacing what's there and touching nothing else, runs the app's build there, and then starts the app on what its disk holds, even if the build failed. An image app's deploy lists no files: it pulls the image `app.toml` names and writes its files over the app's disk, deleting nothing, and an app whose disk was made for the other kind is `image_disk_mismatch`. Without `owner`, a deploy makes your app if you have none by its name, and with `new_app`, only then; with `owner`, the app must be one you can edit. While no host has room for a new app, a deploy that would make one is refused with `host_full` (503, retryable), and nothing is made: try again later. Apps that already exist still deploy.",
         "operationId": "deploy_create",
         "parameters": [
           {
@@ -2967,7 +2971,7 @@
             }
           },
           {
-            "description": "The username of the app's owner, for an app whose owner made you a developer. Without it, the app is yours.",
+            "description": "The username of the app's owner, for an app whose owner lets you edit it. Without it, the app is yours.",
             "in": "query",
             "name": "owner",
             "schema": {
@@ -3046,7 +3050,7 @@
             }
           },
           {
-            "description": "The username of the app's owner, for an app whose owner made you a developer. Without it, the app is yours.",
+            "description": "The username of the app's owner, for an app whose owner lets you edit it. Without it, the app is yours.",
             "in": "query",
             "name": "owner",
             "schema": {
@@ -3073,7 +3077,7 @@
             "$ref": "#/components/responses/Error"
           }
         },
-        "summary": "Stable IDs for binding a developer's project, including a personal app shared with them."
+        "summary": "Stable IDs for binding a project folder, including one for a personal app shared with you."
       }
     },
     "/v1/apps/{app}/logs": {
@@ -3118,7 +3122,7 @@
             }
           },
           {
-            "description": "The username of the app's owner, for an app whose owner made you a developer. Without it, the app is yours.",
+            "description": "The username of the app's owner, for an app whose owner lets you edit it. Without it, the app is yours.",
             "in": "query",
             "name": "owner",
             "schema": {
@@ -3155,7 +3159,7 @@
             }
           },
           {
-            "description": "The username of the app's owner, for an app whose owner made you a developer. Without it, the app is yours.",
+            "description": "The username of the app's owner, for an app whose owner lets you edit it. Without it, the app is yours.",
             "in": "query",
             "name": "owner",
             "schema": {
@@ -3200,7 +3204,7 @@
             }
           },
           {
-            "description": "The username of the app's owner, for an app whose owner made you a developer. Without it, the app is yours.",
+            "description": "The username of the app's owner, for an app whose owner lets you edit it. Without it, the app is yours.",
             "in": "query",
             "name": "owner",
             "schema": {
@@ -3244,7 +3248,7 @@
             }
           },
           {
-            "description": "The username of the app's owner, for an app whose owner made you a developer. Without it, the app is yours.",
+            "description": "The username of the app's owner, for an app whose owner lets you edit it. Without it, the app is yours.",
             "in": "query",
             "name": "owner",
             "schema": {
@@ -3287,7 +3291,7 @@
             }
           },
           {
-            "description": "The username of the app's owner, for an app whose owner made you a developer. Without it, the app is yours.",
+            "description": "The username of the app's owner, for an app whose owner lets you edit it. Without it, the app is yours.",
             "in": "query",
             "name": "owner",
             "schema": {
@@ -3351,7 +3355,7 @@
             }
           },
           {
-            "description": "The username of the app's owner, for an app whose owner made you a developer. Without it, the app is yours.",
+            "description": "The username of the app's owner, for an app whose owner lets you edit it. Without it, the app is yours.",
             "in": "query",
             "name": "owner",
             "schema": {
@@ -3403,7 +3407,7 @@
             }
           },
           {
-            "description": "The username of the app's owner, for an app whose owner made you a developer. Without it, the app is yours.",
+            "description": "The username of the app's owner, for an app whose owner lets you edit it. Without it, the app is yours.",
             "in": "query",
             "name": "owner",
             "schema": {
@@ -3479,7 +3483,7 @@
         "summary": "The people one of your apps is shared with, by email, oldest first."
       },
       "put": {
-        "description": "The share names their verified email. A member uses it in their browser or with their agent token, as you do, and finds it in `GET /v1/shared-apps`. A developer can also deploy to it, run commands in it, read its logs and set its secrets, naming it with `owner`; only you share it. The app is told their username in the `Anywhere-User` header, and their role in `Anywhere-Role`, where you get `owner`. Someone with no account yet gets the app once they sign up with that email, and can be made a developer only once they have (`developer_needs_account`). Without `role`, a new share is a member's and an existing one keeps its role; another role changes it. An operation that makes someone a developer warns that developers read the app's secrets and that removing one doesn't undo what they changed. The operation succeeds once every gateway admits them as their role says, and, for a change to member, has closed what needed a developer. Sending it again is safe. The email goes in the body, never the path, so no request log holds it.",
+        "description": "The share names their verified email. With `use`, they open it in their browser or with their agent token, as you do, and find it in `GET /v1/shared-apps`. With `edit`, they can also change it with their agent: deploy to it, run commands in it, read its logs and set its secrets, naming it with `owner`; only you share it. The app is told their username in the `Anywhere-User` header, and in `Anywhere-Role` `member` for use or `developer` for edit, where you get `owner`. Someone with no account yet gets the app once they sign up with that email, and can be given `edit` only once they have (`developer_needs_account`). Without `role`, a new share is `use` and an existing one keeps its access; another value changes it. An operation that gives someone edit access warns that they read the app's secrets and that removing them doesn't undo what they changed. The operation succeeds once every gateway admits them as their access says, and, for a change to `use`, has closed what needed edit access. Sending it again is safe. The email goes in the body, never the path, so no request log holds it.",
         "operationId": "share_add",
         "parameters": [
           {
@@ -3520,7 +3524,7 @@
             "$ref": "#/components/responses/Error"
           }
         },
-        "summary": "Shares one of your apps with someone, or changes their role."
+        "summary": "Shares one of your apps with someone, or changes their access."
       }
     },
     "/v1/apps/{app}/shares/remove": {
@@ -3583,7 +3587,7 @@
             }
           },
           {
-            "description": "The username of the app's owner, for an app whose owner made you a developer. Without it, the app is yours.",
+            "description": "The username of the app's owner, for an app whose owner lets you edit it. Without it, the app is yours.",
             "in": "query",
             "name": "owner",
             "schema": {
@@ -3614,7 +3618,7 @@
     },
     "/v1/apps/{app}/tickets": {
       "post": {
-        "description": "The app is yours, or one you're a developer of. For `exec`, it opens a WebSocket to run a command in the app's running sandbox (`wss://<platform>/v1/apps/{address}/exec`, with the app's `address` that the answer gives, and the ticket in an `Anywhere-Ticket` header), and lasts 60 seconds. It works only on requests that sign in as this one did, with the same bearer token, and returns no operation. A developer's works only while they still are one.",
+        "description": "The app is yours, or one you can edit. For `exec`, it opens a WebSocket to run a command in the app's running sandbox (`wss://<platform>/v1/apps/{address}/exec`, with the app's `address` that the answer gives, and the ticket in an `Anywhere-Ticket` header), and lasts 60 seconds. It works only on requests that sign in as this one did, with the same bearer token, and returns no operation. Someone else's works only while they can still edit the app.",
         "operationId": "app_ticket_create",
         "parameters": [
           {
@@ -3627,7 +3631,7 @@
             }
           },
           {
-            "description": "The username of the app's owner, for an app whose owner made you a developer. Without it, the app is yours.",
+            "description": "The username of the app's owner, for an app whose owner lets you edit it. Without it, the app is yours.",
             "in": "query",
             "name": "owner",
             "schema": {
@@ -3669,7 +3673,7 @@
     },
     "/v1/apps/{app}/usage": {
       "get": {
-        "description": "The app is yours, or one you're a developer of, as for its logs. Its host reads what it uses every 30 seconds while it runs. The answer has its limits, its newest reading, its disk, totals over the range, the stretches with no reading, a point for each step that had one, and the problems it ran into: running out of memory, being held at its CPU limit at least 5% of the time, or a disk at least 90% full, each with the `app.toml` change that fixes it. These thresholds are starting values, not measured ones. It changes nothing, so it's always safe to ask again.",
+        "description": "The app is yours, or one you can edit, as for its logs. Its host reads what it uses every 30 seconds while it runs. The answer has its limits, its newest reading, its disk, totals over the range, the stretches with no reading, a point for each step that had one, and the problems it ran into: running out of memory, being held at its CPU limit at least 5% of the time, or a disk at least 90% full, each with the `app.toml` change that fixes it. These thresholds are starting values, not measured ones. It changes nothing, so it's always safe to ask again.",
         "operationId": "app_usage",
         "parameters": [
           {
@@ -3682,7 +3686,7 @@
             }
           },
           {
-            "description": "The username of the app's owner, for an app whose owner made you a developer. Without it, the app is yours.",
+            "description": "The username of the app's owner, for an app whose owner lets you edit it. Without it, the app is yours.",
             "in": "query",
             "name": "owner",
             "schema": {
@@ -3836,7 +3840,7 @@
     },
     "/v1/operations/{operation}/cancel": {
       "post": {
-        "description": "The deploy ends at once, failed with `deploy_cancelled`, so the app is no longer busy and the next deploy, secret change or delete goes ahead. Its owner and its developers cancel it. Nothing is rolled back and nothing is deleted: a deploy cancelled while it received its files or built leaves the files it had written, and the app starts again on what its disk holds; one cancelled while its app started leaves the app starting, or restarting after it exits, on its disk. Cancelling it again answers the same; a deploy that had already ended is `operation_ended`, and any other operation `operation_not_cancellable`.",
+        "description": "The deploy ends at once, failed with `deploy_cancelled`, so the app is no longer busy and the next deploy, secret change or delete goes ahead. Its owner and the people who can edit it cancel it. Nothing is rolled back and nothing is deleted: a deploy cancelled while it received its files or built leaves the files it had written, and the app starts again on what its disk holds; one cancelled while its app started leaves the app starting, or restarting after it exits, on its disk. Cancelling it again answers the same; a deploy that had already ended is `operation_ended`, and any other operation `operation_not_cancellable`.",
         "operationId": "operation_cancel",
         "parameters": [
           {

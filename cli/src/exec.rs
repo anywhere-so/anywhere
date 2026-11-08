@@ -1,7 +1,7 @@
 //! `anywhere exec <app> -- <command> [args…]`: runs one command in a running
 //! app's sandbox, streaming standard input, output and error over a WebSocket
 //! through the gateway, the tunnel and the host proxy. The app is one of yours, `NAME`, or `OWNER/NAME`,
-//! one whose owner made you a developer.
+//! one whose owner lets you edit it.
 
 use std::io::{self, Read as _, Write};
 

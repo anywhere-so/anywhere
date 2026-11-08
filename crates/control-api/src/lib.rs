@@ -155,8 +155,8 @@ pub struct AppPath {
 #[derive(Clone, Debug, Deserialize, Serialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct OwnerQuery {
-    /// The username of the app's owner, for an app whose owner made you a
-    /// developer. Without it, the app is yours.
+    /// The username of the app's owner, for an app whose owner lets you edit
+    /// it. Without it, the app is yours.
     pub owner: Option<String>,
 }
 
@@ -172,8 +172,8 @@ pub struct LogsQuery {
     /// send only what follows it. `end` starts at the current end instead,
     /// sending an empty first event with that place before any new output.
     pub after: Option<String>,
-    /// The username of the app's owner, for an app whose owner made you a
-    /// developer. Without it, the app is yours.
+    /// The username of the app's owner, for an app whose owner lets you edit
+    /// it. Without it, the app is yours.
     pub owner: Option<String>,
 }
 
@@ -292,7 +292,7 @@ pub struct Deploy {
     pub started_at: DateTime<Utc>,
     /// For a deploy that succeeded or failed: when it did.
     pub ended_at: Option<DateTime<Utc>>,
-    /// The username of who started it: the app's owner, or one of its developers.
+    /// The username of who started it: the app's owner, or someone who can edit it.
     pub by: String,
 }
 
@@ -367,8 +367,8 @@ impl fmt::Debug for ShareRequest {
 pub struct ShareAddRequest {
     /// Their verified email, which matches without regard to ASCII case.
     pub email: String,
-    /// What they may do: a new share without one is a member's, and an
-    /// existing one keeps its role.
+    /// What they may do: a new share without one is `use`, and an existing
+    /// one keeps its role.
     pub role: Option<ShareRole>,
 }
 
@@ -385,12 +385,13 @@ impl fmt::Debug for ShareAddRequest {
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Deserialize, Serialize, JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum ShareRole {
-    /// Uses the app, in a browser or with an agent token; what they may do in
-    /// it is the app's to decide.
-    Member,
-    /// Also deploys to it, runs commands in it, reads its logs and sets its
-    /// secrets; never shares it.
-    Developer,
+    /// Can use: opens the app, in a browser or with an agent token; what they
+    /// may do in it is the app's to decide.
+    Use,
+    /// Can edit: also changes it with their agent (pulls it, deploys to it,
+    /// runs commands in it, reads its logs and sets its secrets); never shares
+    /// it.
+    Edit,
 }
 
 /// Whether the app admits anonymous visitors.
@@ -654,7 +655,7 @@ pub struct TicketRequest {
     pub service: TicketService,
 }
 
-/// A ticket for one of your apps, or one you're a developer of.
+/// A ticket for one of your apps, or one you can edit.
 #[derive(Clone, Debug, PartialEq, Eq, Deserialize, Serialize, JsonSchema)]
 pub struct Ticket {
     /// Send this in an `Anywhere-Ticket` header, exactly as it is.
@@ -680,8 +681,8 @@ pub struct Operation {
     /// For an operation that failed: why, and how to fix it.
     pub error: Option<ErrorBody>,
     /// For a secret change that succeeded on a web app with no address yet:
-    /// why, and what gives it one. For a share that makes someone a developer:
-    /// what a developer can do that removing them won't undo. A deploy may also
+    /// why, and what gives it one. For a share that lets someone edit the app:
+    /// what they can do that removing them won't undo. A deploy may also
     /// carry advice recorded when it was admitted.
     pub warning: Option<Warning>,
     /// For a deploy: the step it's on, or, once it has ended, the step it ended

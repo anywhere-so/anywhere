@@ -256,7 +256,7 @@ async fn a_range_it_doesnt_know_is_refused_before_any_request() {
 #[tokio::test]
 async fn the_platforms_refusal_keeps_its_code_and_says_whether_to_retry() {
     let refusal = json!({"code": "member_only", "retryable": false,
-        "message": "michael made you a member of wiki, to use it but not change it; ask them to make you a developer"});
+        "message": "michael lets you use wiki but not edit it; ask them for edit access"});
     let server = Server::start(vec![Reply {
         status: 403,
         ..reply(refusal)

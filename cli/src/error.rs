@@ -53,19 +53,19 @@ pub enum CliError {
     #[error("{source}")]
     NewName { source: NameError },
     #[error(
-        "cannot create an app in {workspace}; choose your personal namespace or a team where you have an assigned paid developer seat"
+        "cannot create an app in {workspace}; choose your personal namespace or a team where you have an assigned vibecoder seat"
     )]
     NewWorkspace { workspace: String },
     #[error(
-        "in OWNER/NAME, {source}; name an app as `anywhere apps list` shows it: NAME for one of yours, OWNER/NAME for one whose owner made you a developer"
+        "in OWNER/NAME, {source}; name an app as `anywhere apps list` shows it: NAME for one of yours, OWNER/NAME for one whose owner lets you edit it"
     )]
     QualifiedName { source: NameError },
     #[error(
-        "{given:?} has more than one `/`; name an app as `anywhere apps list` shows it: NAME for one of yours, OWNER/NAME for one whose owner made you a developer"
+        "{given:?} has more than one `/`; name an app as `anywhere apps list` shows it: NAME for one of yours, OWNER/NAME for one whose owner lets you edit it"
     )]
     AppRefSlashes { given: String },
     #[error(
-        "only an app's owner shares it, so `anywhere shares` takes one of your own apps, by its name alone, never OWNER/NAME; to change who can use or develop an app shared with you, or your own role in it, ask its owner"
+        "only an app's owner shares it, so `anywhere shares` takes one of your own apps, by its name alone, never OWNER/NAME; to change who can use or edit an app shared with you, or your own access to it, ask its owner"
     )]
     OwnerOnly,
     #[error(
@@ -245,7 +245,7 @@ pub enum CliError {
     )]
     LogsInterrupted { detail: String },
     #[error(
-        "the `anywhere exec` connection ended before the command finished ({detail}); check the app's state before running the command again, because it may have already run; on an app shared with you, its owner may have removed you or made you a member, which running `anywhere exec` again with a harmless command, such as `true`, says"
+        "the `anywhere exec` connection ended before the command finished ({detail}); check the app's state before running the command again, because it may have already run; on an app shared with you, its owner may have removed you or changed your access to can use only, which running `anywhere exec` again with a harmless command, such as `true`, says"
     )]
     ExecInterrupted { detail: String },
 
@@ -267,7 +267,7 @@ pub enum CliError {
         said: String,
     },
     #[error(
-        "the connection to the app ended before `tar` finished ({detail}), so nothing was written to {dir}; run `anywhere pull` again, which also says so if the owner of an app shared with you removed you or made you a member"
+        "the connection to the app ended before `tar` finished ({detail}), so nothing was written to {dir}; run `anywhere pull` again, which also says so if the owner of an app shared with you removed you or changed your access to can use only"
     )]
     PullInterrupted { dir: String, detail: String },
     #[error(
@@ -520,7 +520,7 @@ mod tests {
         ] {
             let message = error.to_string();
             assert!(
-                message.contains("removed you or made you a member"),
+                message.contains("removed you or changed your access to can use only"),
                 "{message}"
             );
             assert!(message.contains(again), "{message}");

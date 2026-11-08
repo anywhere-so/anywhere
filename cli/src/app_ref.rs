@@ -1,5 +1,5 @@
 //! How a command names an app: `NAME`, one of yours, or `OWNER/NAME`, one
-//! whose owner made you a developer, as `anywhere apps list` prints it. Neither
+//! whose owner lets you edit it, as `anywhere apps list` prints it. Neither
 //! a username nor an app name holds a `/`, so one `/` splits them, and a bare
 //! `alice-wiki` stays the name of an app of your own.
 

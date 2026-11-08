@@ -24,9 +24,9 @@ async fn lists_apps_using_the_existing_authenticated_api() {
 #[tokio::test]
 async fn lists_the_apps_shared_with_you_after_your_own_as_owner_slash_name_with_your_role() {
     let spend = json!({"owner":"bob","name":"spend","url":"https://bob-spend.anywhereapps.test",
-        "role":"developer"});
+        "role":"edit"});
     let wiki = json!({"owner":"jo","name":"wiki","url":"https://jo-wiki.anywhereapps.test",
-        "role":"member"});
+        "role":"use"});
     let server = Server::start(vec![
         reply(json!({"apps":[app()]})),
         reply(json!({"apps":[spend.clone(), wiki.clone()]})),
@@ -46,7 +46,7 @@ async fn lists_the_apps_shared_with_you_after_your_own_as_owner_slash_name_with_
     assert!(output.status.success(), "{}", text(&output.stderr));
     assert_eq!(
         text(&output.stdout),
-        "hello\trunning\tdeployed 2026-10-12 00:00:00 UTC\thttps://dev-hello.anywhereapps.test\nbob/spend\tshared with you as developer\thttps://bob-spend.anywhereapps.test\njo/wiki\tshared with you as member\thttps://jo-wiki.anywhereapps.test\n"
+        "hello\trunning\tdeployed 2026-10-12 00:00:00 UTC\thttps://dev-hello.anywhereapps.test\nbob/spend\tshared with you, can edit\thttps://bob-spend.anywhereapps.test\njo/wiki\tshared with you, can use\thttps://jo-wiki.anywhereapps.test\n"
     );
 
     // Someone with only shared apps sees those, not "No apps yet."
@@ -58,7 +58,7 @@ async fn lists_the_apps_shared_with_you_after_your_own_as_owner_slash_name_with_
     let output = server.run(&["apps", "list"]).await;
     assert_eq!(
         text(&output.stdout),
-        "bob/spend\tshared with you as developer\thttps://bob-spend.anywhereapps.test\n"
+        "bob/spend\tshared with you, can edit\thttps://bob-spend.anywhereapps.test\n"
     );
 }
 

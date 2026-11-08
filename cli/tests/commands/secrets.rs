@@ -625,11 +625,11 @@ async fn a_developer_names_the_app_with_its_owner_and_never_makes_it() {
         ["GET /v1/apps/wiki/secrets?owner=michael HTTP/1.1"]
     );
 
-    // A member's change is refused, and not sent again.
+    // A change by someone who can only use the app is refused, and not sent again.
     let server = Server::start(vec![Reply {
         status: 403,
         ..reply(json!({"code": "member_only",
-            "message": "michael made you a member of wiki, to use it but not change it; ask them to make you a developer",
+            "message": "michael lets you use wiki but not edit it; ask them for edit access",
             "retryable": false}))
     }])
     .await;

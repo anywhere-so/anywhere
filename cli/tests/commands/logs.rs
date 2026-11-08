@@ -238,7 +238,7 @@ async fn names_an_app_you_edit_with_its_owner() {
     let server = Server::start(vec![Reply {
         status: 403,
         ..reply(json!({"code": "member_only",
-            "message": "michael made you a member of wiki, to use it but not change it; ask them to make you a developer",
+            "message": "michael lets you use wiki but not edit it; ask them for edit access",
             "retryable": false}))
     }])
     .await;

@@ -1,11 +1,13 @@
 # Teams and project destinations
 
 A person keeps a free personal workspace and may join teams for free. Personal
-Pro is optional. A new team app is visible to everyone in its workspace: every
-member uses it, and every member with an assigned team-paid vibecoder seat
-develops it. Without a seat, nobody develops. A restricted app is reached only
-by workspace owners, its creator and members granted it; a seat never exposes
-it. Workspace owners manage members and billing. An app's creator and workspace
+Pro is optional. Per-app access is "can edit" (change, deploy and run commands
+in it with an agent: pull, deploy, exec, secrets, logs) or "can use" (open it).
+A new team app is visible to everyone in its workspace: every member can use it,
+and every vibecoder, a member with an assigned team-paid vibecoder seat, can
+edit it. Without a vibecoder seat, nobody edits. A restricted app is reached
+only by workspace owners, its creator and members granted it; a vibecoder seat
+never exposes it. Workspace owners manage members and billing. An app's creator and workspace
 owners manage that app.
 
 ```sh
@@ -53,13 +55,13 @@ Owners invite people by their verified sign-in email and send the resulting link
 ```sh
 anywhere workspaces invite acme ada@example.com
 anywhere workspaces members acme
-anywhere workspaces set acme USER_UUID --role member --developer true
+anywhere workspaces set acme USER_UUID --role member --developer true  # --developer: holds a vibecoder seat
 anywhere workspaces remove acme USER_UUID
 ```
 
-Invitations do not buy seats. Assign only already purchased capacity. Developer
-access permits deploy, exec, pull, logs and secrets, and removing it cannot undo
-changes already made. The last owner cannot leave; appoint another owner first.
+Invitations do not buy vibecoder seats. Assign only already purchased capacity.
+Edit access permits deploy, exec, pull, logs and secrets, and removing it cannot
+undo changes already made. The last owner cannot leave; appoint another owner first.
 Removed members lose their team access through every credential, while their
 personal access remains.
 
@@ -68,8 +70,8 @@ who sees the app:
 
 ```sh
 anywhere workspaces sharing acme wiki
-anywhere workspaces grant acme wiki USER_UUID --role member
-anywhere workspaces grant acme wiki USER_UUID --role developer
+anywhere workspaces grant acme wiki USER_UUID --access use
+anywhere workspaces grant acme wiki USER_UUID --access edit
 anywhere workspaces revoke-grant acme wiki USER_UUID
 anywhere workspaces visibility acme wiki --everyone true
 anywhere workspaces visibility acme wiki --everyone false
@@ -77,13 +79,13 @@ anywhere workspaces visibility acme wiki --everyone false
 
 `everyone` means current workspace members, never the public internet, and is
 the default. On such an app a grant overrides the default for one member:
-`member` turns a seated member down to use only, and `developer` is the same as
-the default. On a restricted app, a grant is the only way in. Owners and the
-app's creator can't be turned down, and nobody can be blocked from an app
+`use` turns a vibecoder down to can use, and `edit` is the same as the default.
+On a restricted app, a grant is the only way in. Owners and the app's creator
+can always edit and can't be turned down, and nobody can be blocked from an app
 visible to everyone: restrict it instead. Team groups come later. Personal `anywhere shares` stays free and
 separate. A team member pays nothing for app use. A team is $50 a month with 5
 vibecoder seats and one shared $50 runtime allowance, whatever its seat count;
-a workspace owner explicitly buys more seats, $10 each monthly, and top-ups in
+a workspace owner explicitly buys more vibecoder seats, $10 each monthly, and top-ups in
 the portal's Usage & billing. No personal Pro subscription is needed. Billing
 links are browser-only.
 
