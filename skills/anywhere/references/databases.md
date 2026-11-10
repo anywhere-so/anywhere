@@ -11,9 +11,9 @@ Apps connect out over TCP on any port except 25, 465 and 587, so an app can use 
    ```
 
 4. **The build gets no secrets.** Run migrations when the app starts, or with `anywhere exec APP -- <migration command>`.
-5. **Verify before saying it works:** run a query from inside the app with `anywhere exec APP -- <client or script>`, such as `psql "$DATABASE_URL" -c 'select 1'` once `postgresql-client` is installed, then check the app's logs.
+5. **Verify before saying it works:** run a query from inside the app with `anywhere exec APP -- <client or script>`, such as `anywhere exec APP -- sh -c 'psql "$DATABASE_URL" -c "select 1"'` once `postgresql-client` is installed (the single quotes keep your own shell from expanding the variable, so the app's secret is used), then check the app's logs.
 
-If the database accepts only listed addresses, add every address `dig +short outbound.<domain>` prints, where `<domain>` is the Anywhere domain the CLI is signed in to: `outbound.anywhere.so` for anywhere.so. Every Anywhere app shares these addresses, so the allowlist doesn't keep other apps out; the password does. Say so to the user.
+If the database accepts only listed addresses, add every address `dig +short outbound.<domain>` prints, where `<domain>` is the Anywhere domain the CLI is signed in to: `outbound.anywhere.so` for anywhere.so. If it prints nothing, stop and tell the user rather than adding an empty list. Every Anywhere app shares these addresses, so the allowlist doesn't keep other apps out; the password does. Say so to the user.
 
 If the database has no public address, tunnel through the user's SSH bastion host from the app's start command: install `openssh-client` in the build, store the private key as a secret, write it at start to a file with mode 0600 and the bastion's host key to `known_hosts`, then run `ssh -N -L 5432:<database host>:5432 <user>@<bastion> &` before `exec`-ing the server, which connects to `127.0.0.1:5432`.
 
