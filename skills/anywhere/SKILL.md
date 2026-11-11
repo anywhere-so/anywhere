@@ -17,6 +17,7 @@ Read only the references relevant to the request:
 - **Design, structure or build an app:** [building apps](references/building-apps.md): app standards (folder layout, SQLite, built-in identity headers, production processes, icons), `app.toml`, public container images, static sites and browser/network constraints.
 - **Create or polish a web UI or static site (REQUIRED for any frontend work):** [UI and web design](references/ui-and-design.md): drop-in `:root` CSS token system (warm light & stepped dark surfaces), copy-pasteable control recipes (zero-shift inset inputs, cap-trimmed badges, sliding segmented controls, shared-column list rows with instant-in/eased-out hover), Anti-Slop table, mobile-first (`375px` / `100dvh`) & zero-overflow rules, all 4 data states, zero-dependency CSS/DOM & Storyboard animations, and senior design critique.
 - **Deploy, pull, update or debug:** [deployment and debugging](references/deploying-and-debugging.md): local folder resolution, upload rules, `anywhere pull`, `anywhere exec`, logs, limits, operations and usage.
+- **Use a database hosted elsewhere, or send email:** [databases](references/databases.md): the external connection string, IPv4, storing it as a secret, allowlisting the outbound addresses, SSH tunnels and provider hints.
 - **Work on files, secrets, sharing or deletion:** [managing apps](references/managing-apps.md), reading the relevant section. It also covers the Drive and apps shared with the user.
 
 ## Where apps live locally

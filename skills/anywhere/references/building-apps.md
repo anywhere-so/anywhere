@@ -154,7 +154,7 @@ Authenticated API access using an authorized agent token is supported. Owner-ena
 - Same-app frames work subject to the app's own CSP/X-Frame-Options. Other apps and the portal cannot frame them. Sandboxed frames lacking `allow-same-origin` send `Origin: null` without an Anywhere cookie and receive `other_origin` before reaching the app.
 - Service-worker scripts receive 403 `app_service_worker_refused`; offline mode and service-worker push notifications are unavailable. Ordinary web workers work.
 - Inbound access is HTTP/WebSocket through the gateway; no SSH or Docker daemon (public images are deployed by the platform). Some software is incompatible with gVisor.
-- Outbound internet works; private addresses, cloud metadata, other apps' private addresses and port 25 are blocked. Limits: 128 concurrent connections, 50 new connections/second after a burst of 200, and 50 Mbit/s outbound.
+- Outbound internet works over IPv4, TCP on any port; private addresses, cloud metadata, other apps' private addresses and ports 25, 465 and 587 (email) are refused at once. To use an existing database, see [databases](databases.md). Limits: 128 concurrent connections, 50 new connections/second after a burst of 200, and 50 Mbit/s outbound.
 
 ## Trusted local MCP clients
 
