@@ -105,6 +105,9 @@ pub struct AppSpec {
     /// Idle seconds before sleep; omitted values inherit the account default.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub sleep_after_seconds: Option<u32>,
+    /// Whether the web app serves an MCP endpoint at `/mcp`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub mcp: Option<bool>,
 }
 
 /// Whether an app sleeps when nobody uses it.
@@ -283,6 +286,10 @@ pub enum SpecError {
     SleepWithoutAddress,
     #[error("sleep_after_seconds must be a whole number of seconds greater than zero")]
     BadSleepAfter,
+    #[error(
+        "mcp is set, but only a web app can serve `/mcp` at its address; remove mcp, or serve the app with web in [processes]"
+    )]
+    McpWithoutWeb,
 }
 
 impl SpecError {
@@ -321,6 +328,7 @@ impl SpecError {
             }
             SpecError::BadSleepAfter => "sleep_after_invalid",
             SpecError::SleepWithoutAddress => "sleep_needs_an_address",
+            SpecError::McpWithoutWeb => "app_mcp_invalid",
         }
     }
 }
@@ -463,6 +471,9 @@ impl AppSpec {
         if self.sleep == Some(Sleep::Auto) && self.kind()? == Kind::Worker {
             return Err(SpecError::SleepWithoutAddress);
         }
+        if self.mcp.is_some() && self.kind()? != Kind::Web {
+            return Err(SpecError::McpWithoutWeb);
+        }
         Ok(())
     }
 }
@@ -501,6 +512,11 @@ impl AppSpec {
     /// How long the app gets to start listening after it starts.
     pub fn start_timeout(&self) -> u32 {
         self.start_timeout.unwrap_or(DEFAULT_START_TIMEOUT)
+    }
+
+    /// Whether the app serves `/mcp` with Anywhere OAuth (`mcp = true`).
+    pub fn mcp(&self) -> bool {
+        self.mcp == Some(true)
     }
 
     /// The site's files' paths start with this, `static`'s folder and a `/`,
@@ -638,6 +654,7 @@ worker = "node worker.js"
                 start_timeout: None,
                 sleep: None,
                 sleep_after_seconds: None,
+                mcp: None,
             }
         );
         assert_eq!(
@@ -669,6 +686,7 @@ worker = "node worker.js"
                 start_timeout: None,
                 sleep: None,
                 sleep_after_seconds: None,
+                mcp: None,
             }
         );
         assert_eq!(
@@ -789,6 +807,7 @@ worker = "node worker.js"
                 start_timeout: None,
                 sleep: None,
                 sleep_after_seconds: None,
+                mcp: None,
             };
         let web = |title: &str, command: &str, port| spec(title, Some(command), None, port);
         let worker = |command: &str, port| spec("Hi", None, Some(command), port);
@@ -1175,5 +1194,90 @@ start_timeout = 900
             Err(SpecError::SleepWithoutAddress),
             "the control plane's check"
         );
+    }
+
+    #[test]
+    fn reads_whether_a_web_app_serves_mcp() {
+        let omitted = parse(HELLO).unwrap();
+        assert_eq!(omitted.mcp, None);
+        assert!(!omitted.mcp());
+        let omitted_json = serde_json::to_value(&omitted).unwrap();
+        assert_eq!(omitted_json.get("mcp"), None);
+        assert_eq!(
+            serde_json::from_value::<AppSpec>(omitted_json).unwrap(),
+            omitted
+        );
+
+        let enabled = parse(&format!("mcp = true\n{HELLO}")).unwrap();
+        assert_eq!(enabled.mcp, Some(true));
+        assert!(enabled.mcp());
+        let json = serde_json::to_string(&enabled).unwrap();
+        assert_eq!(
+            json,
+            r#"{"title":"Hello","processes":{"web":"python3 -m http.server $PORT"},"mcp":true}"#
+        );
+        assert_eq!(serde_json::from_str::<AppSpec>(&json).unwrap(), enabled);
+
+        let image_web = parse(&format!("mcp = true\n{OPEN_SEO}")).unwrap();
+        assert_eq!(image_web.kind(), Ok(Kind::Web));
+        assert_eq!(image_web.mcp, Some(true));
+        assert!(image_web.mcp());
+        let image_json = serde_json::to_value(&image_web).unwrap();
+        assert_eq!(image_json["mcp"], serde_json::json!(true));
+        assert_eq!(
+            serde_json::from_value::<AppSpec>(image_json).unwrap(),
+            image_web
+        );
+
+        let disabled = parse(&format!("mcp = false\n{HELLO}")).unwrap();
+        assert_eq!(disabled.mcp, Some(false));
+        assert!(!disabled.mcp());
+        let disabled_json = serde_json::to_string(&disabled).unwrap();
+        assert_eq!(
+            disabled_json,
+            r#"{"title":"Hello","processes":{"web":"python3 -m http.server $PORT"},"mcp":false}"#
+        );
+        assert_eq!(
+            serde_json::from_str::<AppSpec>(&disabled_json).unwrap(),
+            disabled
+        );
+    }
+
+    #[test]
+    fn mcp_must_be_a_boolean() {
+        for value in ["\"yes\"", "\"/mcp\"", "1", "[]"] {
+            let error = parse(&format!("mcp = {value}\n{HELLO}")).unwrap_err();
+            assert_eq!(error.code(), "app_toml_invalid", "{value}: {error}");
+        }
+        for value in [r#""yes""#, r#""/mcp""#] {
+            assert!(
+                serde_json::from_str::<AppSpec>(&format!(
+                    r#"{{"title":"x","processes":{{"web":"y"}},"mcp":{value}}}"#
+                ))
+                .is_err()
+            );
+        }
+    }
+
+    #[test]
+    fn only_a_web_app_may_set_mcp() {
+        let message = "mcp is set, but only a web app can serve `/mcp` at its address; remove mcp, or serve the app with web in [processes]";
+        let image_worker =
+            "title = \"Box\"\nimage = \"alpine:3\"\n[processes]\nworker = \"sleep infinity\"\n";
+        let static_site = "title = \"Docs\"\nstatic = \"public\"\n";
+        for base in [TICKER, image_worker, static_site] {
+            for flag in [true, false] {
+                let error = parse(&format!("mcp = {flag}\n{base}")).unwrap_err();
+                assert_eq!(error, SpecError::McpWithoutWeb, "{base} (mcp = {flag})");
+                assert_eq!(error.code(), "app_mcp_invalid");
+                assert_eq!(error.to_string(), message);
+
+                let mut spec = parse(base).unwrap();
+                spec.mcp = Some(flag);
+                let checked = spec.check().unwrap_err();
+                assert_eq!(checked, SpecError::McpWithoutWeb, "{base} (mcp = {flag})");
+                assert_eq!(checked.code(), "app_mcp_invalid");
+            }
+        }
     }
 }

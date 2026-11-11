@@ -1,7 +1,7 @@
 ---
 name: anywhere
 license: Apache-2.0
-description: Build, organize, deploy, inspect and manage apps and files on Anywhere using its CLI. Use whenever the user wants to create or host a web app, personal tool, dashboard, static site, background worker or public Docker image on anywhere.so, anywhereapp.so or anywhere.localhost, work with .anywhere/apps, deploy or pull an app, debug crashes or usage, manage Drive files, set secrets, share access, or use Anywhere user accounts.
+description: Build, organize, deploy, inspect and manage apps and files on Anywhere using its CLI. Use whenever the user wants to create or host a web app, personal tool, MCP server, dashboard, static site, background worker or public Docker image on anywhere.so, anywhereapp.so or anywhere.localhost, work with .anywhere/apps, deploy or pull an app, debug crashes or usage, manage Drive files, set secrets, share access, or use Anywhere user accounts.
 ---
 
 # Anywhere
@@ -14,7 +14,7 @@ Read only the references relevant to the request:
 
 - **Choose a team or project destination, invite people or manage team access:** [workspaces](references/workspaces.md). Use an explicit workspace before creating software; honor the project binding and never fall back to personal.
 - **Install, sign in or resolve credentials:** [setup](references/setup.md). Find the CLI with `command -v anywhere || ls ~/.local/bin/anywhere`; use the full path if needed. `anywhere apps list` checks sign-in. If missing, install with `curl -fsSL https://anywhere.so/install.sh | sh`. On a `cli_update_available` or `skill_updated` note, or a `cli_outdated` error, follow [setup](references/setup.md#staying-current): usually `anywhere update`, then reread this skill.
-- **Design, structure or build an app:** [building apps](references/building-apps.md): app standards (folder layout, SQLite, built-in identity headers, production processes, icons), `app.toml`, public container images, static sites and browser/network constraints.
+- **Design, structure or build an app:** [building apps](references/building-apps.md): app standards (folder layout, SQLite, built-in identity headers, production processes, icons), `app.toml`, MCP servers (`mcp = true`), public container images, static sites and browser/network constraints.
 - **Create or polish a web UI or static site (REQUIRED for any frontend work):** [UI and web design](references/ui-and-design.md): drop-in `:root` CSS token system (warm light & stepped dark surfaces), copy-pasteable control recipes (zero-shift inset inputs, cap-trimmed badges, sliding segmented controls, shared-column list rows with instant-in/eased-out hover), Anti-Slop table, mobile-first (`375px` / `100dvh`) & zero-overflow rules, all 4 data states, zero-dependency CSS/DOM & Storyboard animations, and senior design critique.
 - **Deploy, pull, update or debug:** [deployment and debugging](references/deploying-and-debugging.md): local folder resolution, upload rules, `anywhere pull`, `anywhere exec`, logs, limits, operations and usage.
 - **Use a database hosted elsewhere, or send email:** [databases](references/databases.md): the external connection string, IPv4, storing it as a secret, allowlisting the outbound addresses, SSH tunnels and provider hints.
@@ -54,7 +54,7 @@ build = "npm ci"          # optional; runs on Linux at every deploy, without sec
 web = "node server.js"
 ```
 
-The server must bind `0.0.0.0:$PORT`; the default startup timeout is 30 seconds, configurable up to 20 minutes. Use `worker` instead of `web` for a process that keeps running without an HTTP endpoint, or top-level `static = "dist"` instead of `[processes]` for a static site. Install dependencies in the build; exclude local `node_modules/`, `.venv/` and runtime data from uploads.
+The server must bind `0.0.0.0:$PORT`; the default startup timeout is 30 seconds, configurable up to 20 minutes. Add top-level `mcp = true` when a web app serves Streamable HTTP MCP at `/mcp` so MCP clients can authorize over OAuth 2.1 ([MCP servers](references/building-apps.md#mcp-servers)). Use `worker` instead of `web` for a process that keeps running without an HTTP endpoint, or top-level `static = "dist"` instead of `[processes]` for a static site. Install dependencies in the build; exclude local `node_modules/`, `.venv/` and runtime data from uploads.
 
 ```sh
 anywhere check ~/.anywhere/apps/notes

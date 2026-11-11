@@ -47,6 +47,7 @@ The folder name is the app name unless `deploy --app` overrides it: lowercase le
 | `image` | Public Docker/OCI image reference; no build/static mode. Uses its own command unless web/worker overrides it. |
 | `start_timeout` | Web readiness timeout in seconds, 1–1200; default 30. |
 | `icon` | Relative PNG path, at most 1 MiB and 1024×1024 pixels; keep it outside ignored files. |
+| `mcp` | Optional boolean (`true` for web apps serving Streamable HTTP MCP at `/mcp` with Anywhere OAuth 2.1); invalid on workers and static sites. See [MCP servers](#mcp-servers). |
 | `sleep` | `"auto"` sleeps when idle and wakes on the next request; `"never"` always runs. Default `auto` for web apps, static sites and image apps with an address, `never` for workers; see [sleep](#sleep). |
 
 Choose exactly one mode: web, worker or static. Unknown keys are refused. Put top-level fields before `[processes]` and `[limits]`; a misplaced key belongs to the preceding TOML table.
@@ -156,6 +157,23 @@ Authenticated API access using an authorized agent token is supported. Owner-ena
 - Inbound access is HTTP/WebSocket through the gateway; no SSH or Docker daemon (public images are deployed by the platform). Some software is incompatible with gVisor.
 - Outbound internet works over IPv4, TCP on any port; private addresses, cloud metadata, other apps' private addresses and ports 25, 465 and 587 (email) are refused at once. To use an existing database, see [databases](databases.md). Limits: 128 concurrent connections, 50 new connections/second after a burst of 200, and 50 Mbit/s outbound.
 
-## Trusted local MCP clients
+## MCP servers
 
-An app's authenticated HTTP API/MCP endpoint can use the user's agent token through a trusted client on their machine. Only the client's header helper should run `anywhere token`; do not run it yourself or capture the account token in a transcript. `anywhere token --header-json` emits the header object directly, without a CLI JSON envelope, and fails if login is missing. For a Claude Code HTTP MCP connection, set `headersHelper` to `anywhere token --header-json`; keep the endpoint URL separate and use the URL printed by the CLI. Put the CLI on that client's PATH or use its absolute path. Do not distribute the whole-account credential to an app or third-party service. OAuth-only clients cannot substitute for this header-helper flow.
+Set top-level `mcp = true` in `app.toml` on a web app (including an image web app) that serves a Streamable HTTP MCP endpoint at `/mcp`:
+
+```toml
+title = "Research Tools"
+mcp = true
+build = "npm ci"
+
+[processes]
+web = "node server.js"
+```
+
+`mcp = true` enables native OAuth 2.1 authorization on `<app-url>/mcp`—serving `/.well-known/oauth-protected-resource` and authorizing callers through Anywhere sign-in—so remote and desktop MCP clients (Claude, ChatGPT, Cursor, OpenCode, Claude Code, Codex) can connect directly to `<app-url>/mcp` using OAuth while keeping the app restricted to its owner and shared or workspace users. Always use `<app-url>/mcp` with the URL returned by the CLI.
+
+Authenticated requests to `/mcp` receive the same trusted `Anywhere-User-ID`, `Anywhere-User` and `Anywhere-Role` headers as browser and API requests, with client-supplied copies stripped. On POST-only Streamable HTTP servers that do not open a standalone SSE stream, respond to `GET /mcp` (with `Accept: text/event-stream`) with `405 Method Not Allowed` rather than `404`.
+
+### Local header-helper MCP clients
+
+A trusted local client on the user's machine can also authenticate to an app's HTTP API or MCP endpoint with the user's agent token via `anywhere token --header-json`. Only the client's header helper should run `anywhere token`; never run `anywhere token` yourself or capture the account token in a transcript. `anywhere token --header-json` emits `{"Authorization":"Bearer <token>"}` directly, without a CLI JSON envelope, and fails if login is missing. For a local Claude Code HTTP MCP connection, set `headersHelper` to `anywhere token --header-json` (putting the CLI on that client's `PATH` or using its absolute path) and keep the endpoint URL separate, using the URL printed by the CLI. Do not distribute the whole-account credential to an app or third-party service; use `mcp = true` and OAuth for remote or third-party MCP clients.
