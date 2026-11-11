@@ -15,7 +15,27 @@ Apps connect out over TCP on any port except 25, 465 and 587, so an app can use 
 
 If the database accepts only listed addresses, add every address `dig +short outbound.<domain>` prints, where `<domain>` is the Anywhere domain the CLI is signed in to: `outbound.anywhere.so` for anywhere.so. If it prints nothing, stop and tell the user rather than adding an empty list. Every Anywhere app shares these addresses, so the allowlist doesn't keep other apps out; the password does. Say so to the user.
 
-If the database has no public address, tunnel through the user's SSH bastion host from the app's start command: install `openssh-client` in the build, store the private key as a secret, write it at start to a file with mode 0600 and the bastion's host key to `known_hosts`, then run `ssh -N -L 5432:<database host>:5432 <user>@<bastion> &` before `exec`-ing the server, which connects to `127.0.0.1:5432`.
+If the database has no public address, tunnel through the user's SSH bastion host. Install `openssh-client` in the build, store the bastion's private key and its `known_hosts` line as secrets (`BASTION_KEY`, `BASTION_KNOWN_HOSTS`), and start with `web = "bash start.sh"`. The script must wait until the tunnel forwards before starting the server, and exit when either stops, so the platform restarts both; the server connects to `127.0.0.1:5432`:
+
+```bash
+#!/bin/bash
+set -euo pipefail
+umask 077
+trap 'kill $(jobs -p) 2>/dev/null' EXIT
+mkdir -p ~/.ssh
+printf '%s\n' "$BASTION_KEY" > ~/.ssh/bastion
+printf '%s\n' "$BASTION_KNOWN_HOSTS" > ~/.ssh/known_hosts
+ssh -N -i ~/.ssh/bastion -o BatchMode=yes -o StrictHostKeyChecking=yes \
+  -o ExitOnForwardFailure=yes -o ServerAliveInterval=15 -o ServerAliveCountMax=3 \
+  -L 5432:<database host>:5432 <user>@<bastion> &
+until (exec 3<>/dev/tcp/127.0.0.1/5432) 2>/dev/null; do
+  kill -0 $! 2>/dev/null || exit 1 # ssh failed; its error is in the app's logs
+  sleep 0.2
+done
+node server.js &
+wait -n
+exit 1
+```
 
 | Provider | Use |
 | --- | --- |
