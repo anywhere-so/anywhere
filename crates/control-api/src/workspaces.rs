@@ -13,10 +13,15 @@ pub enum WorkspaceKind {
     Team,
 }
 
+/// A person's role in a workspace. An owner owns the team: everything an
+/// admin does, plus its owners and billing. An admin runs its people and apps:
+/// every team app, members and the vibecoder seats already paid for.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Deserialize, Serialize, JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum WorkspaceRole {
+    // No doc comments on variants: they'd turn the schema's string enum into oneOf.
     Owner,
+    Admin,
     Member,
 }
 
@@ -90,6 +95,8 @@ pub struct WorkspaceInvitationPath {
 pub struct WorkspaceMember {
     pub user: Uuid,
     pub username: String,
+    /// The email they sign in with, or null when their sign-in has none.
+    pub email: Option<String>,
     pub role: WorkspaceRole,
     /// Whether they hold a vibecoder seat.
     pub developer: bool,
@@ -219,6 +226,8 @@ pub enum AppAccessLevel {
 pub enum AppAccessSource {
     /// They own the workspace, which no grant changes.
     Owner,
+    /// They're a workspace admin, which no grant changes.
+    Admin,
     /// They made the app, which no grant changes.
     Creator,
     /// Their per-app grant.
@@ -232,6 +241,8 @@ pub enum AppAccessSource {
 pub struct WorkspaceAppGrant {
     pub user: Uuid,
     pub username: String,
+    /// The email they sign in with, or null when their sign-in has none.
+    pub email: Option<String>,
     /// Their role in the workspace.
     pub role: WorkspaceRole,
     /// Whether they made the app.
@@ -240,12 +251,12 @@ pub struct WorkspaceAppGrant {
     pub seat: bool,
     /// What they can do with the app now.
     pub access: AppAccessLevel,
-    /// Whether they manage its sharing and deletion: owners and its creator.
+    /// Whether they manage its sharing and deletion: owners, admins and its creator.
     pub manage: bool,
     /// Why they have `access`; absent when it's `none`.
     pub source: Option<AppAccessSource>,
     /// Their per-app grant, which overrides the workspace default; never
-    /// counts for owners or the creator.
+    /// counts for owners, admins or the creator.
     pub grant: Option<crate::ShareRole>,
     /// What they'd have with no grant.
     pub default_access: AppAccessLevel,
@@ -253,7 +264,7 @@ pub struct WorkspaceAppGrant {
 
 /// Who can use and edit a team app. On an app visible to everyone, each
 /// member can use it and a vibecoder can edit it, unless a grant says otherwise;
-/// on a restricted one, only owners, its creator and people granted reach it.
+/// on a restricted one, only owners, admins, its creator and people granted reach it.
 #[derive(Clone, Debug, Deserialize, Serialize, JsonSchema)]
 pub struct WorkspaceAppAccess {
     pub everyone: bool,

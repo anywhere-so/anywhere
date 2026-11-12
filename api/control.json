@@ -2258,8 +2258,10 @@
         "type": "string"
       },
       "WorkspaceRole": {
+        "description": "A person's role in a workspace. An owner owns the team: everything an admin does, plus its owners and billing. An admin runs its people and apps: every team app, members and the vibecoder seats already paid for.",
         "enum": [
           "owner",
+          "admin",
           "member"
         ],
         "type": "string"
@@ -2327,7 +2329,7 @@
         "type": "object"
       },
       "WorkspaceAppAccess": {
-        "description": "Who can use and edit a team app. On an app visible to everyone, each member can use it and a vibecoder can edit it, unless a grant says otherwise; on a restricted one, only owners, its creator and people granted reach it.",
+        "description": "Who can use and edit a team app. On an app visible to everyone, each member can use it and a vibecoder can edit it, unless a grant says otherwise; on a restricted one, only owners, admins, its creator and people granted reach it.",
         "properties": {
           "everyone": {
             "type": "boolean"
@@ -2368,17 +2370,22 @@
             ],
             "description": "What they'd have with no grant."
           },
+          "email": {
+            "description": "The email they sign in with, or null when their sign-in has none.",
+            "nullable": true,
+            "type": "string"
+          },
           "grant": {
             "allOf": [
               {
                 "$ref": "#/components/schemas/ShareRole"
               }
             ],
-            "description": "Their per-app grant, which overrides the workspace default; never counts for owners or the creator.",
+            "description": "Their per-app grant, which overrides the workspace default; never counts for owners, admins or the creator.",
             "nullable": true
           },
           "manage": {
-            "description": "Whether they manage its sharing and deletion: owners and its creator.",
+            "description": "Whether they manage its sharing and deletion: owners, admins and its creator.",
             "type": "boolean"
           },
           "role": {
@@ -2455,6 +2462,13 @@
             "description": "They own the workspace, which no grant changes.",
             "enum": [
               "owner"
+            ],
+            "type": "string"
+          },
+          {
+            "description": "They're a workspace admin, which no grant changes.",
+            "enum": [
+              "admin"
             ],
             "type": "string"
           },
@@ -2621,6 +2635,11 @@
             "description": "Whether they hold a vibecoder seat.",
             "type": "boolean"
           },
+          "email": {
+            "description": "The email they sign in with, or null when their sign-in has none.",
+            "nullable": true,
+            "type": "string"
+          },
           "joined_at": {
             "format": "date-time",
             "type": "string"
@@ -2764,7 +2783,7 @@
     }
   },
   "info": {
-    "description": "Contract 14. The `anywhere` CLI says so in every request's User-Agent, `anywhere/<version> (contract 14)`, and the gateway refuses a CLI built for another contract, or one from before them (`anywhere/<version>` alone), with 400 `cli_outdated` before the request reaches this API, whatever its route or body. Its message says how to install the CLI this platform serves. Other clients are told nothing.",
+    "description": "Contract 15. The `anywhere` CLI says so in every request's User-Agent, `anywhere/<version> (contract 15)`, and the gateway refuses a CLI built for another contract, or one from before them (`anywhere/<version>` alone), with 400 `cli_outdated` before the request reaches this API, whatever its route or body. Its message says how to install the CLI this platform serves. Other clients are told nothing.",
     "title": "Control API",
     "version": "0.1.0"
   },

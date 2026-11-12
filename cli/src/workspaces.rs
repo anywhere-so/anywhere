@@ -42,6 +42,7 @@ pub enum Command {
     Set {
         workspace: String,
         user: Uuid,
+        /// `owner`, `admin` or `member`. Only owners make or change owners.
         #[arg(long)]
         role: String,
         /// Whether they hold a vibecoder seat.
@@ -59,7 +60,7 @@ pub enum Command {
         #[arg(default_value = ".")]
         dir: PathBuf,
     },
-    /// Override one member's access to a team app: `--access edit` or `--access use`. Owners and the app's creator can always edit it, so a grant changes nothing for them. Editing still needs a vibecoder seat.
+    /// Override one member's access to a team app: `--access edit` or `--access use`. Owners, admins and the app's creator can always edit it, so a grant changes nothing for them. Editing still needs a vibecoder seat.
     Grant {
         workspace: String,
         app: String,
@@ -74,7 +75,7 @@ pub enum Command {
         app: String,
         user: Uuid,
     },
-    /// `--everyone true` (the default for new team apps) lets every member use the app and every vibecoder edit it; `--everyone false` restricts it to owners, its creator and members granted.
+    /// `--everyone true` (the default for new team apps) lets every member use the app and every vibecoder edit it; `--everyone false` restricts it to owners, admins, its creator and members granted.
     Visibility {
         workspace: String,
         app: String,
@@ -183,8 +184,9 @@ pub async fn run(command: Command, output: &mut Output) -> Result<ResultData, Cl
         } => {
             let role = match role.as_str() {
                 "owner" => WorkspaceRole::Owner,
+                "admin" => WorkspaceRole::Admin,
                 "member" => WorkspaceRole::Member,
-                _ => return Err(argument("--role must be owner or member")),
+                _ => return Err(argument("--role must be owner, admin or member")),
             };
             request!(control.client.workspace_member_update(
                 &workspace,
