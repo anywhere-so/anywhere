@@ -59,6 +59,8 @@ struct Spec {
     start_timeout: Option<u32>,
     /// Some(true) sleeps, Some(false) never does.
     sleep: Option<bool>,
+    sleep_after_seconds: Option<u32>,
+    mcp: Option<bool>,
 }
 
 /// Images an app may name, valid and not.
@@ -107,6 +109,8 @@ fuzz_target!(|spec: Spec| {
         sleep: spec
             .sleep
             .map(|auto| if auto { Sleep::Auto } else { Sleep::Never }),
+        sleep_after_seconds: spec.sleep_after_seconds,
+        mcp: spec.mcp,
     };
     let checked = spec.check();
     if let Err(error) = &checked {

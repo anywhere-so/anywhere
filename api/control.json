@@ -733,6 +733,11 @@
             ],
             "description": "Optional CPU, memory and disk caps; a deploy fills omitted values from the plan ceilings."
           },
+          "mcp": {
+            "description": "Whether the web app serves an MCP endpoint at `/mcp`.",
+            "nullable": true,
+            "type": "boolean"
+          },
           "port": {
             "description": "A fixed port, for a web app whose software can't read `$PORT`. A background app has none.",
             "format": "uint16",
