@@ -90,6 +90,8 @@ pub struct WorkspaceInvitationPath {
 pub struct WorkspaceMember {
     pub user: Uuid,
     pub username: String,
+    /// The email they sign in with, or null when their sign-in has none.
+    pub email: Option<String>,
     pub role: WorkspaceRole,
     /// Whether they hold a vibecoder seat.
     pub developer: bool,
@@ -232,6 +234,8 @@ pub enum AppAccessSource {
 pub struct WorkspaceAppGrant {
     pub user: Uuid,
     pub username: String,
+    /// The email they sign in with, or null when their sign-in has none.
+    pub email: Option<String>,
     /// Their role in the workspace.
     pub role: WorkspaceRole,
     /// Whether they made the app.

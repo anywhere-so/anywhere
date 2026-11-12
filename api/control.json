@@ -2363,6 +2363,11 @@
             ],
             "description": "What they'd have with no grant."
           },
+          "email": {
+            "description": "The email they sign in with, or null when their sign-in has none.",
+            "nullable": true,
+            "type": "string"
+          },
           "grant": {
             "allOf": [
               {
@@ -2615,6 +2620,11 @@
           "developer": {
             "description": "Whether they hold a vibecoder seat.",
             "type": "boolean"
+          },
+          "email": {
+            "description": "The email they sign in with, or null when their sign-in has none.",
+            "nullable": true,
+            "type": "string"
           },
           "joined_at": {
             "format": "date-time",
