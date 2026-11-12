@@ -241,7 +241,8 @@ pub enum AppAccessSource {
 pub struct WorkspaceAppGrant {
     pub user: Uuid,
     pub username: String,
-    /// The email they sign in with, or null when their sign-in has none.
+    /// The email they sign in with, shown to workspace owners and admins; null
+    /// for anyone else, or when their sign-in has none.
     pub email: Option<String>,
     /// Their role in the workspace.
     pub role: WorkspaceRole,

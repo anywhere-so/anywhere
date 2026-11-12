@@ -2371,7 +2371,7 @@
             "description": "What they'd have with no grant."
           },
           "email": {
-            "description": "The email they sign in with, or null when their sign-in has none.",
+            "description": "The email they sign in with, shown to workspace owners and admins; null for anyone else, or when their sign-in has none.",
             "nullable": true,
             "type": "string"
           },
