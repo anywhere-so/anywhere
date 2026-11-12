@@ -13,13 +13,14 @@ pub enum WorkspaceKind {
     Team,
 }
 
+/// A person's role in a workspace. An owner owns the team: everything an
+/// admin does, plus its owners and billing. An admin runs its people and apps:
+/// every team app, members and the vibecoder seats already paid for.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Deserialize, Serialize, JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum WorkspaceRole {
-    /// Owns the team: everything an admin does, plus owners and billing.
+    // No doc comments on variants: they'd turn the schema's string enum into oneOf.
     Owner,
-    /// Runs the team's people and apps: every team app, members and seats
-    /// already paid for, but not owners or billing.
     Admin,
     Member,
 }

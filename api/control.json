@@ -2253,28 +2253,13 @@
         "type": "string"
       },
       "WorkspaceRole": {
-        "oneOf": [
-          {
-            "enum": [
-              "member"
-            ],
-            "type": "string"
-          },
-          {
-            "description": "Owns the team: everything an admin does, plus owners and billing.",
-            "enum": [
-              "owner"
-            ],
-            "type": "string"
-          },
-          {
-            "description": "Runs the team's people and apps: every team app, members and seats already paid for, but not owners or billing.",
-            "enum": [
-              "admin"
-            ],
-            "type": "string"
-          }
-        ]
+        "description": "A person's role in a workspace. An owner owns the team: everything an admin does, plus its owners and billing. An admin runs its people and apps: every team app, members and the vibecoder seats already paid for.",
+        "enum": [
+          "owner",
+          "admin",
+          "member"
+        ],
+        "type": "string"
       },
       "WorkspaceApps": {
         "properties": {
