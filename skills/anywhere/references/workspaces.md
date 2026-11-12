@@ -6,9 +6,12 @@ in it with an agent: pull, deploy, exec, secrets, logs) or "can use" (open it).
 A new team app is visible to everyone in its workspace: every member can use it,
 and every vibecoder, a member with an assigned team-paid vibecoder seat, can
 edit it. Without a vibecoder seat, nobody edits. A restricted app is reached
-only by workspace owners, its creator and members granted it; a vibecoder seat
-never exposes it. Workspace owners manage members and billing. An app's creator and workspace
-owners manage that app.
+only by workspace owners and admins, its creator and members granted it; a
+vibecoder seat never exposes it. A team has three roles. Owners do everything.
+Admins reach every team app and manage members and the vibecoder seats already
+paid for, but can't make, change or remove owners, and can't see or change
+billing. Members reach what's shared with them. An app's creator, workspace
+admins and owners manage that app.
 
 ```sh
 anywhere workspaces list
@@ -50,12 +53,12 @@ someone else's checkout is refused with `username_taken` or
 anywhere workspaces create acme --title 'Acme'
 ```
 
-Owners invite people by their verified sign-in email and send the resulting link:
+Owners and admins invite people by their verified sign-in email and send the resulting link:
 
 ```sh
 anywhere workspaces invite acme ada@example.com
 anywhere workspaces members acme
-anywhere workspaces set acme USER_UUID --role member --developer true  # --developer: holds a vibecoder seat
+anywhere workspaces set acme USER_UUID --role admin --developer true  # --role owner|admin|member; --developer: holds a vibecoder seat
 anywhere workspaces remove acme USER_UUID
 ```
 
@@ -80,7 +83,7 @@ anywhere workspaces visibility acme wiki --everyone false
 `everyone` means current workspace members, never the public internet, and is
 the default. On such an app a grant overrides the default for one member:
 `use` turns a vibecoder down to can use, and `edit` is the same as the default.
-On a restricted app, a grant is the only way in. Owners and the app's creator
+On a restricted app, a grant is the only way in. Owners, admins and the app's creator
 can always edit and can't be turned down, and nobody can be blocked from an app
 visible to everyone: restrict it instead. Team groups come later. Personal `anywhere shares` stays free and
 separate. A team member pays nothing for app use. A team is $50 a month with 5
