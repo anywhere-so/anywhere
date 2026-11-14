@@ -207,10 +207,11 @@ async fn follow(
                     });
                 }
             };
-            let sleep = if kind == Kind::Worker {
-                appspec::Sleep::Never
-            } else if let Some(mode) = checked.app.spec.sleep {
+            let sleep = if let Some(mode) = checked.app.spec.sleep {
                 mode
+            } else if kind == Kind::Worker {
+                // A background app never takes the account's default.
+                appspec::Sleep::Never
             } else {
                 control
                     .client
@@ -309,7 +310,7 @@ mod tests {
             output::sleep_note(spec.resolved_sleep().unwrap())
         };
         let web = "title = \"Hi\"\n[processes]\nweb = \"./serve\"\n";
-        let line = "Sleeps when idle and wakes on the next request (`sleep = \"auto\"`). Timers and background work pause while it sleeps; use `sleep = \"never\"` if it must keep running.";
+        let line = "Sleeps when idle and wakes for its next request, `anywhere exec` or scheduled run (`sleep = \"auto\"`). Its own timers and background work pause while it sleeps; run timed work with a `[[schedule]]`, or use `sleep = \"never\"` if it must keep running.";
         assert_eq!(note(web), Some(line), "a web app that doesn't say");
         assert_eq!(note(&format!("sleep = \"auto\"\n{web}")), Some(line));
         assert_eq!(
@@ -322,6 +323,13 @@ mod tests {
             note("title = \"Tick\"\n[processes]\nworker = \"./tick\"\n"),
             None,
             "a background app"
+        );
+        assert_eq!(
+            note(
+                "title = \"Tick\"\nsleep = \"auto\"\n[processes]\nworker = \"./tick\"\n[[schedule]]\nname = \"tick\"\ncron = \"*/5 * * * *\"\nrun = \"./tick --once\"\n"
+            ),
+            Some(line),
+            "a background app that a schedule wakes"
         );
     }
 }

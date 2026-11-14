@@ -183,6 +183,12 @@ pub enum CliError {
         error: Box<CliError>,
         repeat: &'static str,
     },
+    /// A request to run a schedule now that failed before its operation was
+    /// known. Repeating it may start a second run, so it isn't retryable.
+    #[error(
+        "{error}; the run may have started before that, so check `anywhere schedules --app {app}`, which shows it as the schedule's last run if it did, before running it again"
+    )]
+    RunUnconfirmed { error: Box<CliError>, app: AppRef },
     #[error("{}", .0.message)]
     Api(ErrorBody),
     #[error(
@@ -391,7 +397,9 @@ impl CliError {
             CliError::EnvFileUnreadable { .. } => "env_file_unreadable",
             CliError::EnvFileInvalid { problem, .. } => problem.code(),
             CliError::SecretsRequestTooLarge { .. } => "secrets_request_too_large",
-            CliError::ChangeUnconfirmed { error, .. } => error.code(),
+            CliError::ChangeUnconfirmed { error, .. } | CliError::RunUnconfirmed { error, .. } => {
+                error.code()
+            }
             CliError::Api(error) | CliError::OperationFailed(error) => &error.code,
             CliError::UploadRefused(error) => &error.code,
             CliError::Unreachable { .. } => "api_unreachable",

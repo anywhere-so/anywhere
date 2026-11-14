@@ -32,6 +32,8 @@ mod logs;
 mod operations;
 #[path = "commands/pull.rs"]
 mod pull;
+#[path = "commands/schedules.rs"]
+mod schedules;
 #[path = "commands/secrets.rs"]
 mod secrets;
 #[path = "commands/shares.rs"]

@@ -64,6 +64,7 @@ pub fn longest(kind: &OperationKind) -> Duration {
         | OperationKind::AppDelete
         | OperationKind::AppPause
         | OperationKind::AppResume
+        | OperationKind::ScheduleRun
         | OperationKind::CredentialRevoke => crate::shares::CHANGE_DEADLINE,
     }
 }
@@ -193,6 +194,12 @@ pub fn check_failed(operation: &Operation) -> Result<(), CliError> {
                 message: "the pause or resume failed without a recorded reason; keep its operation ID and ask the operator to inspect it".to_owned(),
                 retryable: false,
             }),
+            (None, OperationKind::ScheduleRun) => CliError::OperationFailed(crate::api::types::ErrorBody {
+                diagnostic: None,
+                code: "schedule_run_failed_without_reason".to_owned(),
+                message: "the scheduled run failed without a recorded reason; keep its operation ID and ask the operator to inspect it".to_owned(),
+                retryable: false,
+            }),
             (None, OperationKind::AppDelete) => CliError::OperationFailed(crate::api::types::ErrorBody {
                 diagnostic: None,
                 code: "delete_failed_without_reason".to_owned(),
@@ -230,6 +237,7 @@ mod tests {
             OperationKind::ShareRemove,
             OperationKind::ShareChange,
             OperationKind::AppDelete,
+            OperationKind::ScheduleRun,
             OperationKind::CredentialRevoke,
         ] {
             assert!(

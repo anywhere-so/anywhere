@@ -328,13 +328,22 @@ async fn a_background_deploy_names_the_app_and_has_no_url() {
 
 #[tokio::test]
 async fn a_deploy_ends_saying_the_app_sleeps_when_idle_only_if_it_does() {
-    let note = "note: Sleeps when idle and wakes on the next request (`sleep = \"auto\"`). Timers and background work pause while it sleeps; use `sleep = \"never\"` if it must keep running.\n";
+    let note = "note: Sleeps when idle and wakes for its next request, `anywhere exec` or scheduled run (`sleep = \"auto\"`). Its own timers and background work pause while it sleeps; run timed work with a `[[schedule]]`, or use `sleep = \"never\"` if it must keep running.\n";
     for (name, toml, background, sleeps) in [
         ("plain", TOML.to_owned(), false, true),
         ("account-never", TOML.to_owned(), false, false),
         ("auto", format!("sleep = \"auto\"\n{TOML}"), false, true),
         ("never", format!("sleep = \"never\"\n{TOML}"), false, false),
         ("ticker", WORKER_TOML.to_owned(), true, false),
+        // A schedule wakes a background app, so it may sleep.
+        (
+            "scheduled",
+            format!(
+                "sleep = \"auto\"\n{WORKER_TOML}[[schedule]]\nname = \"tick\"\ncron = \"*/5 * * * *\"\nrun = \"sh tick.sh --once\"\n"
+            ),
+            true,
+            true,
+        ),
     ] {
         let dir = tempfile::tempdir().unwrap();
         let app = app_dir(&dir, name, &toml);

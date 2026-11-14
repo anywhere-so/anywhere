@@ -48,15 +48,17 @@ The folder name is the app name unless `deploy --app` overrides it: lowercase le
 | `start_timeout` | Web readiness timeout in seconds, 1–1200; default 30. |
 | `icon` | Relative PNG path, at most 1 MiB and 1024×1024 pixels; keep it outside ignored files. |
 | `mcp` | Optional boolean (`true` for web apps serving Streamable HTTP MCP at `/mcp` with Anywhere OAuth 2.1); invalid on workers and static sites. See [MCP servers](#mcp-servers). |
-| `sleep` | `"auto"` sleeps when idle and wakes on the next request; `"never"` always runs. Default `auto` for web apps, static sites and image apps with an address, `never` for workers; see [sleep](#sleep). |
+| `sleep` | `"auto"` sleeps when idle and wakes on the next request, exec or scheduled run; `"never"` always runs. Default `auto` for web apps, static sites and image apps with an address, `never` for workers; a worker may set `auto` only with a `[[schedule]]`. See [sleep](#sleep). |
+| `[[schedule]]` | Optional, repeatable: a command run on a timer, with `name`, 5-field `cron`, optional IANA `timezone` (default UTC) and `run`; at most 16, not on static sites. See [schedules](schedules.md). |
 
-Choose exactly one mode: web, worker or static. Unknown keys are refused. Put top-level fields before `[processes]` and `[limits]`; a misplaced key belongs to the preceding TOML table.
+Choose exactly one mode: web, worker or static. Unknown keys are refused. Put top-level fields before `[processes]`, `[limits]` and `[[schedule]]`; a misplaced key belongs to the preceding TOML table.
 
-A combined web/worker app still has one platform command. For example, `web = "sh start.sh"` can run `node worker.js &` then `exec node server.js`. The platform watches the server; it will not independently restart a failed worker. With `sleep = "auto"`, that worker pauses whenever the app sleeps.
+A combined web/worker app still has one platform command. For example, `web = "sh start.sh"` can run `node worker.js &` then `exec node server.js`. The platform watches the server; it will not independently restart a failed worker. With `sleep = "auto"`, that worker pauses whenever the app sleeps; run timed work with a [`[[schedule]]`](schedules.md), which wakes the app.
 
 ## Sleep
 
-Web apps and static sites inherit account sleep defaults; workers stay awake.
+Web apps and static sites inherit account sleep defaults. Workers stay awake
+unless they have a [`[[schedule]]`](schedules.md) and set `sleep = "auto"`.
 See [sleep](sleep.md) for mode selection, idle rules and background-job leases.
 
 ### Browser presence

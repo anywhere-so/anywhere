@@ -6,6 +6,9 @@ license.workspace = true
 publish.workspace = true
 
 [dependencies]
+chrono.workspace = true
+chrono-tz.workspace = true
+croner.workspace = true
 manifest.workspace = true
 png.workspace = true
 schemars.workspace = true

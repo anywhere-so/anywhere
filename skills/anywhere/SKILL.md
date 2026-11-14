@@ -17,6 +17,7 @@ Read only the references relevant to the request:
 - **Design, structure or build an app:** [building apps](references/building-apps.md): app standards (folder layout, SQLite, built-in identity headers, production processes, icons), `app.toml`, MCP servers (`mcp = true`), public container images, static sites and browser/network constraints.
 - **Create or polish a web UI or static site (REQUIRED for any frontend work):** [UI and web design](references/ui-and-design.md): drop-in `:root` CSS token system (warm light & stepped dark surfaces), copy-pasteable control recipes (zero-shift inset inputs, cap-trimmed badges, sliding segmented controls, shared-column list rows with instant-in/eased-out hover), Anti-Slop table, mobile-first (`375px` / `100dvh`) & zero-overflow rules, all 4 data states, zero-dependency CSS/DOM & Storyboard animations, and senior design critique.
 - **Deploy, pull, update or debug:** [deployment and debugging](references/deploying-and-debugging.md): local folder resolution, upload rules, `anywhere pull`, `anywhere exec`, logs, limits, operations and usage.
+- **Run a command on a timer, such as a daily digest, sync or cleanup:** [schedules](references/schedules.md): `[[schedule]]` in `app.toml`, how runs work, `anywhere schedules` and a worker that sleeps between runs.
 - **Use a database hosted elsewhere, or send email:** [databases](references/databases.md): the external connection string, IPv4, storing it as a secret, allowlisting the outbound addresses, SSH tunnels and provider hints.
 - **Work on files, secrets, sharing or deletion:** [managing apps](references/managing-apps.md), reading the relevant section. It also covers the Drive and apps shared with the user.
 
@@ -56,12 +57,22 @@ web = "node server.js"
 
 The server must bind `0.0.0.0:$PORT`; the default startup timeout is 30 seconds, configurable up to 20 minutes. Add top-level `mcp = true` when a web app serves Streamable HTTP MCP at `/mcp` so MCP clients can authorize over OAuth 2.1 ([MCP servers](references/building-apps.md#mcp-servers)). Use `worker` instead of `web` for a process that keeps running without an HTTP endpoint, or top-level `static = "dist"` instead of `[processes]` for a static site. Install dependencies in the build; exclude local `node_modules/`, `.venv/` and runtime data from uploads.
 
+To run a command on a timer, add a `[[schedule]]` table after `[processes]`. It runs like `anywhere exec`, waking the app first if it sleeps, and its output goes to `anywhere logs`. `anywhere schedules` shows each one's next and last run; `anywhere schedules run NAME` runs one now. Read [schedules](references/schedules.md) first.
+
+```toml
+[[schedule]]
+name = "digest"
+cron = "0 8 * * *"             # 5-field cron: 8:00 every day
+timezone = "America/New_York"  # optional; UTC if left out
+run = "node jobs/digest.js"
+```
+
 ```sh
 anywhere check ~/.anywhere/apps/notes
 anywhere deploy ~/.anywhere/apps/notes
 ```
 
-Web apps and static sites inherit account sleep defaults: initially `auto`, 30 idle seconds. CRUD apps, dashboards and APIs usually suit auto; asleep, only disk is charged. Set account defaults with `anywhere sleep`; set app overrides in `app.toml` and deploy. `anywhere sleep APP` inspects effective settings. Use a [job lease](references/sleep.md#background-jobs) for finite background work; use `sleep = "never"` for bots, polling, schedules or avoiding wake delays. Workers never sleep. Read [sleep](references/sleep.md) before choosing, and explain the tradeoff to the user.
+Web apps and static sites inherit account sleep defaults: initially `auto`, 30 idle seconds. CRUD apps, dashboards and APIs usually suit auto; asleep, only disk is charged. Set account defaults with `anywhere sleep`; set app overrides in `app.toml` and deploy. `anywhere sleep APP` inspects effective settings. Use a [job lease](references/sleep.md#background-jobs) for finite background work, a [`[[schedule]]`](references/schedules.md) for work on a timer, and `sleep = "never"` for bots, polling or avoiding wake delays. An app's own timers don't fire while it sleeps; a schedule wakes it. Workers stay awake unless they have a `[[schedule]]` and set `sleep = "auto"`. Read [sleep](references/sleep.md) before choosing, and explain the tradeoff to the user.
 
 Deploy overwrites uploaded paths and deletes nothing. Deleted or renamed local files remain remotely. There is no rollback: failed uploads/builds can leave changed files, and the platform attempts to restart using the disk as it stands. Check logs and repair; do not assume the old app survived unchanged.
 
