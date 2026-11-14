@@ -427,6 +427,18 @@ pub fn parse(text: &str) -> Result<AppSpec, SpecError> {
                 message: resources_replaced(resources),
             });
         }
+        // `[schedule]`, one table, where each schedule is an `[[schedule]]`.
+        if let Some(toml::Value::Table(single)) = table.get("schedule") {
+            return Err(SpecError::BadSchedule {
+                name: single
+                    .get("name")
+                    .and_then(toml::Value::as_str)
+                    // A table with no name is refused all the same.
+                    .unwrap_or("")
+                    .to_owned(),
+                reason: "is written as [schedule], with single brackets; write each schedule as its own [[schedule]] table, with double brackets".to_owned(),
+            });
+        }
         if let Some(raw) = table.remove("limits") {
             let limits: limits::TomlLimits = raw.try_into().map_err(invalid_toml)?;
             table.insert(
@@ -1666,12 +1678,6 @@ run = "sh cleanup.sh"
                 "{error}"
             );
         }
-        // One table, not an array of them.
-        let error = parse(&format!(
-            "{TICKER}[schedule]\nname = \"a\"\ncron = \"0 8 * * *\"\nrun = \"x\"\n"
-        ))
-        .unwrap_err();
-        assert_eq!(error.code(), "app_toml_invalid");
         // `schedules` is the field's name in Rust, never in app.toml.
         let error = parse(&format!(
             "{TICKER}[[schedules]]\nname = \"a\"\ncron = \"0 8 * * *\"\nrun = \"x\"\n"
@@ -1681,6 +1687,32 @@ run = "sh cleanup.sh"
             error.to_string().contains("unknown field `schedules`"),
             "{error}"
         );
+    }
+
+    #[test]
+    fn a_single_schedule_table_is_refused_saying_to_double_its_brackets() {
+        for (body, name) in [
+            (
+                "name = \"digest\"\ncron = \"0 8 * * *\"\nrun = \"x\"\n",
+                "digest",
+            ),
+            ("cron = \"0 8 * * *\"\n", ""),
+        ] {
+            let error = parse(&format!("{TICKER}[schedule]\n{body}")).unwrap_err();
+            assert_eq!(error.code(), "app_schedule_invalid", "{error}");
+            assert_eq!(
+                error.to_string(),
+                format!(
+                    "schedule {name:?} is written as [schedule], with single brackets; write each schedule as its own [[schedule]] table, with double brackets"
+                )
+            );
+        }
+        // Written the right way, the same schedule reads.
+        let spec = parse(&format!(
+            "{TICKER}[[schedule]]\nname = \"digest\"\ncron = \"0 8 * * *\"\nrun = \"x\"\n"
+        ))
+        .unwrap();
+        assert_eq!(spec.schedules.len(), 1);
     }
 
     #[test]
