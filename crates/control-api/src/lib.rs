@@ -15,9 +15,11 @@ mod cli_contract;
 mod cli_login;
 mod follow;
 pub mod plans;
+mod schedules;
 mod sleep;
 mod usage;
 mod workspaces;
+pub use schedules::*;
 pub use sleep::*;
 /// The most a deploy's request may be, as JSON: room for any app's list of
 /// files, while bounding what one deploy makes the control plane read before it
@@ -755,6 +757,9 @@ pub enum OperationKind {
     /// Changes what a share lets its person do; it succeeds once every gateway
     /// admits them as their new role says.
     ShareChange,
+    /// Runs one of an app's scheduled commands in its sandbox, waking the app
+    /// first if it sleeps; it succeeds once the command has started.
+    ScheduleRun,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Deserialize, Serialize, JsonSchema)]

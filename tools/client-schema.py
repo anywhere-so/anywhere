@@ -34,6 +34,8 @@ OPERATIONS = {
     'app_delete',
     'app_pause',
     'app_resume',
+    'app_schedule_run',
+    'app_schedules_view',
     'app_list',
     'app_identity',
     'app_logs',

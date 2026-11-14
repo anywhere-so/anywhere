@@ -450,6 +450,13 @@
               "share_change"
             ],
             "type": "string"
+          },
+          {
+            "description": "Runs one of an app's scheduled commands in its sandbox, waking the app first if it sleeps; it succeeds once the command has started.",
+            "enum": [
+              "schedule_run"
+            ],
+            "type": "string"
           }
         ]
       },
@@ -753,13 +760,20 @@
             ],
             "description": "The app's one command. A static site has none, and leaves this out."
           },
+          "schedule": {
+            "description": "Commands the app runs on a timer, each a `[[schedule]]` table, at most 16. A static site runs no command, so it has none.",
+            "items": {
+              "$ref": "#/components/schemas/Schedule"
+            },
+            "type": "array"
+          },
           "sleep": {
             "allOf": [
               {
                 "$ref": "#/components/schemas/Sleep"
               }
             ],
-            "description": "Whether the app sleeps when nobody uses it: `\"auto\"`, so it's saved to disk once idle and woken by its next request or `anywhere exec`, or `\"never\"`. Omitted values inherit the account default. Workers never sleep.",
+            "description": "Whether the app sleeps when nobody uses it: `\"auto\"`, so it's saved to disk once idle and woken by its next request, `anywhere exec` or schedule, or `\"never\"`. Omitted values inherit the account default, except for a background app, which never sleeps unless it says `\"auto\"`, and may only with a `[[schedule]]` to wake it.",
             "nullable": true
           },
           "sleep_after_seconds": {
@@ -832,6 +846,35 @@
         },
         "type": "object"
       },
+      "Schedule": {
+        "additionalProperties": false,
+        "description": "A command an app runs on a timer, given as a `[[schedule]]` table. It runs in the app's sandbox as `anywhere exec` runs a command, waking the app first if it sleeps, and what it prints goes to the app's logs.",
+        "properties": {
+          "cron": {
+            "description": "When it runs, in standard 5-field cron: minute, hour, day of the month, month and day of the week, such as `0 8 * * *` for 8:00 every day.",
+            "type": "string"
+          },
+          "name": {
+            "description": "The schedule's name, unique in the app, such as `digest`: 1 to 32 lowercase letters, digits and `-`, starting with a letter.",
+            "type": "string"
+          },
+          "run": {
+            "description": "The command it runs, by a shell, such as `node jobs/digest.js`.",
+            "type": "string"
+          },
+          "timezone": {
+            "description": "The IANA time zone `cron` is read in, such as `America/New_York`; UTC if it's left out.",
+            "nullable": true,
+            "type": "string"
+          }
+        },
+        "required": [
+          "cron",
+          "name",
+          "run"
+        ],
+        "type": "object"
+      },
       "Sleep": {
         "description": "Whether an app sleeps when nobody uses it.",
         "oneOf": [
@@ -875,6 +918,131 @@
           "workspace_id"
         ],
         "type": "object"
+      },
+      "AppSchedules": {
+        "description": "An app's schedules, in the order its `app.toml` gives them, each with its next run and its last.",
+        "properties": {
+          "schedules": {
+            "items": {
+              "$ref": "#/components/schemas/AppSchedule"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "schedules"
+        ],
+        "type": "object"
+      },
+      "AppSchedule": {
+        "description": "One of an app's `[[schedule]]` tables, when it runs next, and how its last run went.",
+        "properties": {
+          "cron": {
+            "description": "When it runs, in 5-field cron, read in `timezone`.",
+            "type": "string"
+          },
+          "last_run": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/ScheduleRun"
+              }
+            ],
+            "description": "Its newest run, at its time or started by hand. None until it has had one.",
+            "nullable": true
+          },
+          "name": {
+            "description": "Its name, which `anywhere schedules run` takes.",
+            "type": "string"
+          },
+          "next_run_at": {
+            "description": "When it runs next. None while the app is paused, since a paused app skips its runs.",
+            "format": "date-time",
+            "nullable": true,
+            "type": "string"
+          },
+          "run": {
+            "description": "The command it runs.",
+            "type": "string"
+          },
+          "timezone": {
+            "description": "The IANA time zone `cron` is read in: `UTC` unless `app.toml` gives one.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "cron",
+          "name",
+          "run",
+          "timezone"
+        ],
+        "type": "object"
+      },
+      "ScheduleRun": {
+        "description": "One run of a schedule: the operation that starts its command. It succeeds once the command has started; what the command prints, and how it exits, are in the app's logs.",
+        "properties": {
+          "created_at": {
+            "description": "When the run began.",
+            "format": "date-time",
+            "type": "string"
+          },
+          "due_at": {
+            "description": "The time it was due, by its schedule. None for a run started by hand.",
+            "format": "date-time",
+            "nullable": true,
+            "type": "string"
+          },
+          "error": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/ErrorBody"
+              }
+            ],
+            "description": "For a run that failed: why, and how to fix it.",
+            "nullable": true
+          },
+          "operation": {
+            "description": "Its operation, which `GET /v1/operations/{operation}` shows too.",
+            "format": "uuid",
+            "type": "string"
+          },
+          "state": {
+            "$ref": "#/components/schemas/OperationState"
+          },
+          "trigger": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/ScheduleTrigger"
+              }
+            ],
+            "description": "What started it."
+          }
+        },
+        "required": [
+          "created_at",
+          "operation",
+          "state",
+          "trigger"
+        ],
+        "type": "object"
+      },
+      "ScheduleTrigger": {
+        "description": "What started a schedule's run.",
+        "oneOf": [
+          {
+            "description": "Its time came.",
+            "enum": [
+              "schedule"
+            ],
+            "type": "string"
+          },
+          {
+            "description": "Someone ran it now, with `anywhere schedules run`.",
+            "enum": [
+              "manual"
+            ],
+            "type": "string"
+          }
+        ]
       },
       "SecretList": {
         "description": "The names of an app's secrets, in order, without their values.",
@@ -1077,7 +1245,7 @@
       },
       "SleepSettings": {
         "additionalProperties": false,
-        "description": "Account defaults. Workers always stay awake.",
+        "description": "Account defaults. A background app never takes the default `sleep`: it sleeps only when its own `app.toml` says `sleep = \"auto\"`.",
         "properties": {
           "sleep": {
             "$ref": "#/components/schemas/Sleep"
@@ -3256,6 +3424,105 @@
           }
         },
         "summary": "Resumes one of your owner-paused apps. Otherwise it is `not_paused`."
+      }
+    },
+    "/v1/apps/{app}/schedules": {
+      "get": {
+        "description": "They're the `[[schedule]]` tables of its newest `app.toml`, in order. The app is yours, or one you can edit. A paused app's schedules have no next run, since a paused app skips its runs. It changes nothing, so it's always safe to ask again.",
+        "operationId": "app_schedules_view",
+        "parameters": [
+          {
+            "description": "The app's name, which is its folder's name.",
+            "in": "path",
+            "name": "app",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "The username of the app's owner, for an app whose owner lets you edit it. Without it, the app is yours.",
+            "in": "query",
+            "name": "owner",
+            "schema": {
+              "nullable": true,
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppSchedules"
+                }
+              }
+            },
+            "description": "successful operation"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "summary": "An app's schedules, each with when it runs next and how its last run went."
+      }
+    },
+    "/v1/apps/{app}/schedules/{schedule}/run": {
+      "post": {
+        "description": "The app is yours, or one you can edit. Its command runs in the app's sandbox as `anywhere exec` runs one, waking the app first if it sleeps, and the operation succeeds once the command has started: what it prints, and how it exits, are in the app's logs. A schedule runs once at a time, so while its last run hasn't exited, the operation fails with `schedule_still_running`. A name the app's `app.toml` doesn't give is `schedule_not_found`, which lists the names it does, and a paused app is `app_paused`.",
+        "operationId": "app_schedule_run",
+        "parameters": [
+          {
+            "description": "The app's name, which is its folder's name.",
+            "in": "path",
+            "name": "app",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "The schedule's name, as its `[[schedule]]` in `app.toml` gives it.",
+            "in": "path",
+            "name": "schedule",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "The username of the app's owner, for an app whose owner lets you edit it. Without it, the app is yours.",
+            "in": "query",
+            "name": "owner",
+            "schema": {
+              "nullable": true,
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Operation"
+                }
+              }
+            },
+            "description": "successfully enqueued operation"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "summary": "Runs one of an app's schedules now, whatever its cron says."
       }
     },
     "/v1/apps/{app}/secrets": {

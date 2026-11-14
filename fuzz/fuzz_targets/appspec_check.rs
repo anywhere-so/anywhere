@@ -61,6 +61,61 @@ struct Spec {
     sleep: Option<bool>,
     sleep_after_seconds: Option<u32>,
     mcp: Option<bool>,
+    schedules: Vec<Schedule>,
+}
+
+/// A `[[schedule]]`, from known values, valid and not, or any text.
+#[derive(Arbitrary, Debug)]
+struct Schedule {
+    name: Text,
+    cron: Text,
+    timezone: Option<Text>,
+    run: String,
+}
+
+/// Names a schedule may have, valid and not; two schedules that pick the
+/// same one share a name.
+const NAMES: &[&str] = &["digest", "a", "a-1", "Digest", "1a", "a_b", ""];
+
+/// Crons a schedule may give, valid and not.
+const CRONS: &[&str] = &[
+    "0 8 * * *",
+    "*/15 * * * *",
+    "0 9 * * MON-FRI",
+    "0 0 29 2 *",
+    "0 8 * *",
+    "0 0 8 * * *",
+    "@daily",
+    "0 0 L * *",
+    "60 * * * *",
+    "0 0 30 2 *",
+    "",
+];
+
+/// Time zones a schedule may name, valid and not.
+const ZONES: &[&str] = &[
+    "UTC",
+    "America/New_York",
+    "Asia/Kolkata",
+    "utc",
+    "Mars/Olympus",
+    "",
+];
+
+/// One of a list of known values, or any text at all.
+#[derive(Arbitrary, Debug)]
+enum Text {
+    Known(u8),
+    Any(String),
+}
+
+impl Text {
+    fn pick(self, known: &[&str]) -> String {
+        match self {
+            Text::Known(i) => known[usize::from(i) % known.len()].to_owned(),
+            Text::Any(text) => text,
+        }
+    }
 }
 
 /// Images an app may name, valid and not.
@@ -111,6 +166,16 @@ fuzz_target!(|spec: Spec| {
             .map(|auto| if auto { Sleep::Auto } else { Sleep::Never }),
         sleep_after_seconds: spec.sleep_after_seconds,
         mcp: spec.mcp,
+        schedules: spec
+            .schedules
+            .into_iter()
+            .map(|schedule| appspec::Schedule {
+                name: schedule.name.pick(NAMES),
+                cron: schedule.cron.pick(CRONS),
+                timezone: schedule.timezone.map(|zone| zone.pick(ZONES)),
+                run: schedule.run,
+            })
+            .collect(),
     };
     let checked = spec.check();
     if let Err(error) = &checked {

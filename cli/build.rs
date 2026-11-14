@@ -23,6 +23,10 @@ fn main() -> Result<(), Box<dyn Error>> {
         "SleepSettings",
         "SleepOverrides",
         "AppSleepSettings",
+        "AppSchedules",
+        "AppSchedule",
+        "ScheduleRun",
+        "ScheduleTrigger",
         "Workspace",
         "WorkspaceKind",
         "WorkspaceRole",
@@ -54,6 +58,7 @@ fn main() -> Result<(), Box<dyn Error>> {
             std::iter::empty(),
         )
         .with_replacement("AppSpec", "appspec::AppSpec", std::iter::empty())
+        .with_replacement("Schedule", "appspec::Schedule", std::iter::empty())
         .with_replacement("Limits", "appspec::Limits", std::iter::empty())
         .with_replacement(
             "LimitRequests",

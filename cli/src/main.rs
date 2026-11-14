@@ -29,6 +29,7 @@ mod output;
 mod pause;
 mod pull;
 mod retry;
+mod schedules;
 mod secrets;
 mod settings;
 mod shares;
@@ -186,6 +187,16 @@ enum Command {
         #[arg(long)]
         detail: bool,
     },
+    /// List an app's schedules, the commands its app.toml's `[[schedule]]`
+    /// tables run on a timer, each with its next run and how its last run
+    /// went, or run one now with `schedules run NAME`.
+    Schedules {
+        /// The app: NAME, one of yours, or OWNER/NAME, one whose owner lets you edit it. Without it, the app in the working folder, which must hold its app.toml.
+        #[arg(long, global = true)]
+        app: Option<String>,
+        #[command(subcommand)]
+        command: Option<Schedules>,
+    },
     /// Set, list or unset an app's secrets, which it gets as environment variables.
     Secrets {
         #[command(subcommand)]
@@ -276,6 +287,19 @@ enum Secrets {
         name: String,
         #[command(flatten)]
         target: Target,
+    },
+}
+
+#[derive(Debug, Subcommand)]
+enum Schedules {
+    /// Run one of the app's schedules now, whatever its cron says, and wait
+    /// until its command has started. It runs as `anywhere exec` runs a
+    /// command, waking the app first if it sleeps; what it prints, and how it
+    /// exits, are in `anywhere logs`. A schedule runs once at a time, so while
+    /// its last run hasn't exited, this fails with schedule_still_running.
+    Run {
+        /// The schedule's name, as its `[[schedule]]` in app.toml gives it.
+        name: String,
     },
 }
 
@@ -692,6 +716,11 @@ async fn run(
                 .await
                 .map(Outcome::Data)
         }
+        Command::Schedules { app, command } => match command {
+            None => schedules::list(app.as_deref(), *output).await,
+            Some(Schedules::Run { name }) => schedules::run(app.as_deref(), &name, output).await,
+        }
+        .map(Outcome::Data),
         Command::Logs { target, follow } => logs::show(target.app.as_deref(), follow, *output)
             .await
             .map(Outcome::Data),

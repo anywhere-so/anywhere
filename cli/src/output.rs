@@ -53,6 +53,8 @@ pub enum ResultData {
         warning: Option<Warning>,
     },
     Secrets(SecretList),
+    /// An app's schedules, as the control API gives them.
+    Schedules(control_api::AppSchedules),
     Shares(ShareList),
     Access(control_api::AppAccess),
     /// A share that every gateway admits, the link to send its person, and,
@@ -496,6 +498,7 @@ fn show(result: ResultData) {
                 eprintln!("note: {}", plain(note));
             }
         }
+        ResultData::Schedules(schedules) => print!("{}", crate::schedules::text(&schedules)),
         ResultData::Secrets(list) => {
             if list.names.is_empty() {
                 println!("No secrets yet.");
@@ -553,7 +556,7 @@ fn show_app(details: AppDetails) {
 pub fn sleep_note(sleep: appspec::Sleep) -> Option<&'static str> {
     match sleep {
         appspec::Sleep::Auto => Some(
-            "Sleeps when idle and wakes on the next request (`sleep = \"auto\"`). Timers and background work pause while it sleeps; use `sleep = \"never\"` if it must keep running.",
+            "Sleeps when idle and wakes for its next request, `anywhere exec` or scheduled run (`sleep = \"auto\"`). Its own timers and background work pause while it sleeps; run timed work with a `[[schedule]]`, or use `sleep = \"never\"` if it must keep running.",
         ),
         appspec::Sleep::Never => None,
     }

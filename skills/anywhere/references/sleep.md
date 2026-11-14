@@ -4,9 +4,11 @@
 | --- | --- |
 | CRUD apps, dashboards, sites, request-driven APIs | `sleep = "auto"` (default) |
 | Finite work after an HTTP response | `auto` with a job lease |
-| Bots, polling, internal schedules, or no wake delay | `sleep = "never"` |
+| Work on a timer: digests, syncs, cleanups | `auto` with a [`[[schedule]]`](schedules.md) |
+| Bots, long-lived connections, polling loops, or no wake delay | `sleep = "never"` |
 
-Workers never sleep. Let the user choose.
+Workers stay awake unless they have a `[[schedule]]` to wake them and set
+`sleep = "auto"`. Let the user choose.
 
 ## Defaults and overrides
 
@@ -34,8 +36,8 @@ reflect recent usage, so savings appear gradually.
 
 ## Idle and wake
 
-Requests, WebSockets, uploads, exec, browser presence and job leases keep an app
-awake. CPU and outgoing traffic do not. The idle wait follows the effective timeout. Waking within
+Requests, WebSockets, uploads, exec, scheduled runs, browser presence and job
+leases keep an app awake; a request, exec or scheduled run wakes it. CPU and outgoing traffic do not. The idle wait follows the effective timeout. Waking within
 a minute of sleep doubles it, up to four minutes or the configured base, whichever is longer; sleeping over 30 minutes resets
 it. Released or expired leases stop blocking the next sleep attempt.
 
@@ -68,12 +70,15 @@ work. If renewal fails or is late, stop or checkpoint safely and report it.
 Surface release failures too. HTTP 404 from an older helper requires redeployment.
 
 Leases block idle and memory-pressure sleep, not deploys, stops or crashes.
-Persist job progress. Timers and queue pollers still need `never`: sleeping apps
-cannot wake themselves.
+Persist job progress. An app's own timers and queue pollers don't run while it
+sleeps, since it can't wake itself: move timed work to a
+[`[[schedule]]`](schedules.md), which wakes it, or use `never` for work that
+must react at once.
 
 ## Verify
 
-Use `anywhere apps list`, logs and usage; these do not wake the app. `asleep` is
+Use `anywhere apps list`, `anywhere schedules`, logs and usage; these do not
+wake the app. `asleep` is
 healthy. Logs record `went to sleep`, `woke up` and restore failures.
 
 Verify the job finishes after its initiating request closes, then the app sleeps.

@@ -360,6 +360,7 @@ pub async fn scope(
             command:
                 Secrets::Set { target, .. } | Secrets::List { target } | Secrets::Unset { target, .. },
         } => (&cwd, &mut target.app),
+        C::Schedules { app, .. } => (&cwd, app),
         C::Sleep(args) => {
             if args.app.is_none() {
                 if workspace.is_some() || binding::read(&cwd)?.is_some() {

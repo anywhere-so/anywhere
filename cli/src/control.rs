@@ -155,6 +155,19 @@ impl Control {
         .await
     }
 
+    pub async fn schedules(
+        &self,
+        app: &AppRef,
+        deadline: Instant,
+        output: Output,
+    ) -> Result<control_api::AppSchedules, CliError> {
+        self.read(deadline, output, || {
+            self.client
+                .app_schedules_view(app.name.as_str(), app.owner())
+        })
+        .await
+    }
+
     pub async fn account_usage(
         &self,
         deadline: Instant,

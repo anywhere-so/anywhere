@@ -10,8 +10,14 @@ appspec = { path = "crates/appspec" }
 blake3 = "1.8.7"
 bytes = "1.12.1"
 chrono = { version = "0.4.45", default-features = false, features = ["serde", "std"] }
+# The IANA time zones a schedule's cron is read in, compiled into the crate,
+# so nothing is read from the system. chronotope project, MIT OR Apache-2.0.
+chrono-tz = { version = "=0.10.4", default-features = false }
 clap = { version = "4.6.7", features = ["derive"] }
 control-api = { package = "anywhere-api-types", path = "crates/control-api" }
+# Reads a schedule's 5-field cron and finds its next run in its time zone,
+# across clock changes. Hexagon (Robin Nilsson), MIT.
+croner = "=4.0.3"
 futures-util = { version = "0.3.34", default-features = false, features = ["sink", "std"] }
 http = "1.5.0"
 http-body = "1.1.0"

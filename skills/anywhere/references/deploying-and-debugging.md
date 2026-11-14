@@ -59,7 +59,7 @@ Published defaults are Free: 3 deployed apps, 1 shared vCPU/2 GiB memory/10 GiB 
 
 ## Inspect, logs and restart behavior
 
-`anywhere apps list` shows owned/shared apps, status, URL or background mode. `anywhere apps inspect NAME` adds resource settings and the 20 most recent deploys, including operation IDs, initiators and failures. Statuses: `starting`, `running`, `asleep`, `restarting`, `crashed`, `failed`, `stopped`; `restarts` counts restarts. `asleep` is healthy: the app sleeps when idle and its next request or exec wakes it ([sleep](building-apps.md#sleep)).
+`anywhere apps list` shows owned/shared apps, status, URL or background mode. `anywhere apps inspect NAME` adds resource settings and the 20 most recent deploys, including operation IDs, initiators and failures. Statuses: `starting`, `running`, `asleep`, `restarting`, `crashed`, `failed`, `stopped`; `restarts` counts restarts. `asleep` is healthy: the app sleeps when idle and its next request, exec or [scheduled run](schedules.md) wakes it ([sleep](building-apps.md#sleep)).
 
 `anywhere logs --app NAME` includes app output from the current/latest run and the previous run (newest 1 MiB each), deploy/build output and `[anywhere TIME]` lifecycle lines, including `went to sleep` and `woke up`. `no_logs` means the app has not run. Text escapes control characters; JSON returns log text in `result.output`. A read that ends without the platform confirming completion fails with `logs_interrupted`; read the logs again.
 

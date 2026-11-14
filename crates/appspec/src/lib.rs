@@ -22,14 +22,24 @@
 //! itself when it first starts, can give `start_timeout`.
 //!
 //! `sleep` says whether an app sleeps when nobody uses it: `"auto"` or
-//! `"never"`. A background app has no address to wake it by, so it may not
-//! sleep.
+//! `"never"`. A background app has no address to wake it by, so it may sleep
+//! only when it has a schedule to wake it.
+//!
+//! An app that runs code may also run commands on a timer, each a
+//! `[[schedule]]` with a name, a 5-field `cron`, an optional IANA `timezone`
+//! and the command it `run`s, which runs in the app's sandbox as
+//! `anywhere exec` runs one, waking the app first if it sleeps.
 //! Expiry comes with M4, so until then `app.toml` refuses it as unknown.
 
 pub mod icon;
 
 use std::fmt;
 
+use chrono::{DateTime, Utc};
+use chrono_tz::Tz;
+use croner::Cron;
+use croner::errors::CronError;
+use croner::parser::{CronParser, Seconds, Year};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
@@ -57,6 +67,12 @@ pub const DEFAULT_START_TIMEOUT: u32 = 30;
 
 /// The longest `start_timeout`, in seconds, as long as a deploy may take.
 pub const MAX_START_TIMEOUT: u32 = 1200;
+
+/// The most `[[schedule]]` tables an app may have.
+pub const MAX_SCHEDULES: usize = 16;
+
+/// The longest name a schedule may have.
+pub const MAX_SCHEDULE_NAME_LEN: usize = 32;
 
 /// What an app is, as its `app.toml` says.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
@@ -98,8 +114,10 @@ pub struct AppSpec {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub start_timeout: Option<u32>,
     /// Whether the app sleeps when nobody uses it: `"auto"`, so it's saved to
-    /// disk once idle and woken by its next request or `anywhere exec`, or
-    /// `"never"`. Omitted values inherit the account default. Workers never sleep.
+    /// disk once idle and woken by its next request, `anywhere exec` or
+    /// schedule, or `"never"`. Omitted values inherit the account default, except
+    /// for a background app, which never sleeps unless it says `"auto"`, and
+    /// may only with a `[[schedule]]` to wake it.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub sleep: Option<Sleep>,
     /// Idle seconds before sleep; omitted values inherit the account default.
@@ -108,6 +126,30 @@ pub struct AppSpec {
     /// Whether the web app serves an MCP endpoint at `/mcp`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub mcp: Option<bool>,
+    /// Commands the app runs on a timer, each a `[[schedule]]` table, at most
+    /// 16. A static site runs no command, so it has none.
+    #[serde(default, rename = "schedule", skip_serializing_if = "Vec::is_empty")]
+    pub schedules: Vec<Schedule>,
+}
+
+/// A command an app runs on a timer, given as a `[[schedule]]` table. It runs
+/// in the app's sandbox as `anywhere exec` runs a command, waking the app first
+/// if it sleeps, and what it prints goes to the app's logs.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct Schedule {
+    /// The schedule's name, unique in the app, such as `digest`: 1 to 32
+    /// lowercase letters, digits and `-`, starting with a letter.
+    pub name: String,
+    /// When it runs, in standard 5-field cron: minute, hour, day of the month,
+    /// month and day of the week, such as `0 8 * * *` for 8:00 every day.
+    pub cron: String,
+    /// The IANA time zone `cron` is read in, such as `America/New_York`; UTC
+    /// if it's left out.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub timezone: Option<String>,
+    /// The command it runs, by a shell, such as `node jobs/digest.js`.
+    pub run: String,
 }
 
 /// Whether an app sleeps when nobody uses it.
@@ -281,7 +323,7 @@ pub enum SpecError {
     )]
     StartTimeoutWithoutWeb,
     #[error(
-        "A background app has no address, so nothing could wake it once it sleeps. It would stop running without an error. Use `sleep = \"never\"` (the default for background apps), or make it a web app if it only needs to run when asked. A scheduler that wakes apps on a timer is planned."
+        "A background app with no schedule can't sleep: it has no address, so nothing would wake it. Add a [[schedule]] to wake it on a timer, or use `sleep = \"never\"`, the default for background apps."
     )]
     SleepWithoutAddress,
     #[error("sleep_after_seconds must be a whole number of seconds greater than zero")]
@@ -290,6 +332,8 @@ pub enum SpecError {
         "mcp is set, but only a web app can serve `/mcp` at its address; remove mcp, or serve the app with web in [processes]"
     )]
     McpWithoutWeb,
+    #[error("schedule {name:?} {reason}")]
+    BadSchedule { name: String, reason: String },
 }
 
 impl SpecError {
@@ -329,6 +373,7 @@ impl SpecError {
             SpecError::BadSleepAfter => "sleep_after_invalid",
             SpecError::SleepWithoutAddress => "sleep_needs_an_address",
             SpecError::McpWithoutWeb => "app_mcp_invalid",
+            SpecError::BadSchedule { .. } => "app_schedule_invalid",
         }
     }
 }
@@ -380,6 +425,18 @@ pub fn parse(text: &str) -> Result<AppSpec, SpecError> {
         if let Some(resources) = table.get("resources") {
             return Err(SpecError::Invalid {
                 message: resources_replaced(resources),
+            });
+        }
+        // `[schedule]`, one table, where each schedule is an `[[schedule]]`.
+        if let Some(toml::Value::Table(single)) = table.get("schedule") {
+            return Err(SpecError::BadSchedule {
+                name: single
+                    .get("name")
+                    .and_then(toml::Value::as_str)
+                    // A table with no name is refused all the same.
+                    .unwrap_or("")
+                    .to_owned(),
+                reason: "is written as [schedule], with single brackets; write each schedule as its own [[schedule]] table, with double brackets".to_owned(),
             });
         }
         if let Some(raw) = table.remove("limits") {
@@ -468,7 +525,12 @@ impl AppSpec {
         if self.sleep_after_seconds == Some(0) {
             return Err(SpecError::BadSleepAfter);
         }
-        if self.sleep == Some(Sleep::Auto) && self.kind()? == Kind::Worker {
+        self.check_schedules()?;
+        // A schedule is what wakes a background app.
+        if self.sleep == Some(Sleep::Auto)
+            && self.kind()? == Kind::Worker
+            && self.schedules.is_empty()
+        {
             return Err(SpecError::SleepWithoutAddress);
         }
         if self.mcp.is_some() && self.kind()? != Kind::Web {
@@ -530,17 +592,16 @@ impl AppSpec {
     /// Checks the one command, and the port that goes with it.
     fn check_command(&self) -> Result<(), SpecError> {
         let (kind, command) = self.processes.command()?;
-        if command.trim().is_empty() {
-            return Err(SpecError::EmptyCommand { kind });
-        }
-        if command.len() > MAX_COMMAND_LEN {
-            return Err(SpecError::CommandTooLong {
-                kind,
-                len: command.len(),
-            });
-        }
-        if command.contains('\0') {
-            return Err(SpecError::CommandHasNul { kind });
+        match command_fault(command) {
+            Some(CommandFault::Empty) => return Err(SpecError::EmptyCommand { kind }),
+            Some(CommandFault::TooLong) => {
+                return Err(SpecError::CommandTooLong {
+                    kind,
+                    len: command.len(),
+                });
+            }
+            Some(CommandFault::HasNul) => return Err(SpecError::CommandHasNul { kind }),
+            None => {}
         }
         match (kind, self.port) {
             (Kind::Worker, Some(_)) => Err(SpecError::PortWithoutWeb),
@@ -571,16 +632,223 @@ fn check_static(folder: &str) -> Result<(), SpecError> {
 }
 
 fn check_build(command: &str) -> Result<(), SpecError> {
+    match command_fault(command) {
+        Some(CommandFault::Empty) => Err(SpecError::EmptyBuild),
+        Some(CommandFault::TooLong) => Err(SpecError::BuildTooLong { len: command.len() }),
+        Some(CommandFault::HasNul) => Err(SpecError::BuildHasNul),
+        None => Ok(()),
+    }
+}
+
+/// What's wrong with a command, by the rules every command follows: the
+/// app's own, its build's and each schedule's.
+enum CommandFault {
+    Empty,
+    TooLong,
+    HasNul,
+}
+
+fn command_fault(command: &str) -> Option<CommandFault> {
     if command.trim().is_empty() {
-        return Err(SpecError::EmptyBuild);
+        Some(CommandFault::Empty)
+    } else if command.len() > MAX_COMMAND_LEN {
+        Some(CommandFault::TooLong)
+    } else if command.contains('\0') {
+        Some(CommandFault::HasNul)
+    } else {
+        None
     }
-    if command.len() > MAX_COMMAND_LEN {
-        return Err(SpecError::BuildTooLong { len: command.len() });
+}
+
+/// Whether `name` is one a schedule can have: 1 to [`MAX_SCHEDULE_NAME_LEN`]
+/// lowercase ASCII letters, digits and `-`, starting with a letter.
+pub fn is_schedule_name(name: &str) -> bool {
+    (1..=MAX_SCHEDULE_NAME_LEN).contains(&name.len())
+        && name.starts_with(|c: char| c.is_ascii_lowercase())
+        && name
+            .bytes()
+            .all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'-')
+}
+
+/// The example every refusal of a `cron` ends with.
+const CRON_EXAMPLE: &str = "such as cron = \"0 8 * * *\" for 8:00 every day";
+
+impl AppSpec {
+    /// Checks the `[[schedule]]` tables: how many there are, and each one's
+    /// name, command, time zone and cron.
+    fn check_schedules(&self) -> Result<(), SpecError> {
+        if let Some(extra) = self.schedules.get(MAX_SCHEDULES) {
+            return Err(extra.bad(format!(
+                "is one too many: an app may have at most {MAX_SCHEDULES} schedules, and this one has {}; remove some, or have one schedule run a script that does several things",
+                self.schedules.len()
+            )));
+        }
+        if let Some(first) = self.schedules.first()
+            && self.kind()? == Kind::Static
+        {
+            return Err(first.bad(
+                "is set on a static site, which runs no command of its own; remove [[schedule]], or serve the app with web in [processes] to run commands"
+                    .to_owned(),
+            ));
+        }
+        for (index, schedule) in self.schedules.iter().enumerate() {
+            schedule.check()?;
+            if self.schedules[..index]
+                .iter()
+                .any(|earlier| earlier.name == schedule.name)
+            {
+                return Err(
+                    schedule.bad("is named twice; give each [[schedule]] its own name".to_owned())
+                );
+            }
+        }
+        Ok(())
     }
-    if command.contains('\0') {
-        return Err(SpecError::BuildHasNul);
+}
+
+impl Schedule {
+    /// The IANA time zone its `cron` is read in: `timezone`, or `UTC` if it's
+    /// left out.
+    pub fn timezone_name(&self) -> &str {
+        self.timezone.as_deref().unwrap_or("UTC")
     }
-    Ok(())
+
+    /// The first time the schedule runs strictly after `after`, reading its
+    /// `cron` in its time zone. Runs fall on whole minutes.
+    ///
+    /// On a day a clock change skips a time, a schedule at a fixed time, such
+    /// as `30 2 * * *`, runs once at the first minute after the gap, and one
+    /// that repeats through the day, such as `*/30 * * * *` or `30 * * * *`,
+    /// skips the times that don't exist. On a day a clock change repeats an
+    /// hour, a fixed time runs once, the first time it comes, and a repeating
+    /// one runs in both.
+    pub fn next_after(&self, after: DateTime<Utc>) -> Result<DateTime<Utc>, SpecError> {
+        let cron = self.cron()?;
+        let zone = self.zone()?;
+        cron.find_next_occurrence(&after.with_timezone(&zone), false)
+            .map(|next| next.with_timezone(&Utc))
+            .map_err(|error| {
+                self.bad(format!(
+                    "has cron {:?}, whose next run after {after} can't be found: {error}",
+                    self.cron
+                ))
+            })
+    }
+
+    /// Checks everything a schedule says by itself. Its place among the app's
+    /// others, such as a name used twice, is [`AppSpec::check`]'s.
+    fn check(&self) -> Result<(), SpecError> {
+        if !is_schedule_name(&self.name) {
+            return Err(self.bad(format!(
+                "has a name that isn't one a schedule can have; use 1 to {MAX_SCHEDULE_NAME_LEN} lowercase letters, digits and -, starting with a letter, such as name = \"daily-digest\""
+            )));
+        }
+        match command_fault(&self.run) {
+            Some(CommandFault::Empty) => {
+                return Err(self.bad(
+                    "has an empty run; give the command it runs, such as run = \"node jobs/digest.js\""
+                        .to_owned(),
+                ));
+            }
+            Some(CommandFault::TooLong) => {
+                return Err(self.bad(format!(
+                    "has a run {} bytes long; keep it under {MAX_COMMAND_LEN}, or move the command into a script",
+                    self.run.len()
+                )));
+            }
+            Some(CommandFault::HasNul) => {
+                return Err(self.bad(
+                    "has a NUL byte in run, which no command can contain; remove it".to_owned(),
+                ));
+            }
+            None => {}
+        }
+        let zone = self.zone()?;
+        let cron = self.cron()?;
+        // Cron names no years, so its calendar repeats: one that runs at all
+        // runs within a few years of any time, and one that doesn't, such as
+        // on February 30, never will.
+        match cron.find_next_occurrence(&DateTime::UNIX_EPOCH.with_timezone(&zone), false) {
+            Ok(_) => Ok(()),
+            Err(CronError::TimeSearchLimitExceeded) => Err(self.bad(format!(
+                "has cron {:?}, which never runs, since no month it names has that day, such as February 30; choose a day of the month that each month has, {CRON_EXAMPLE}",
+                self.cron
+            ))),
+            Err(error) => Err(self.bad(format!(
+                "has cron {:?}, whose runs can't be found ({error}); {CRON_EXAMPLE}",
+                self.cron
+            ))),
+        }
+    }
+
+    /// Its `cron`, parsed: exactly 5 fields of standard cron.
+    fn cron(&self) -> Result<Cron, SpecError> {
+        let fields = self.cron.split_whitespace().count();
+        if fields != 5 {
+            return Err(self.bad(format!(
+                "has cron {:?}, with {fields} fields; give exactly 5: minute, hour, day of the month, month and day of the week, {CRON_EXAMPLE}",
+                self.cron
+            )));
+        }
+        if !self.cron.split_whitespace().all(standard_cron_field) {
+            return Err(self.bad(format!(
+                "has cron {:?}, which isn't standard cron; use only numbers, names such as MON or JAN, *, ranges such as 1-5, steps such as */15, and lists such as 1,15, {CRON_EXAMPLE}",
+                self.cron
+            )));
+        }
+        CronParser::builder()
+            .seconds(Seconds::Disallowed)
+            .year(Year::Disallowed)
+            .build()
+            .parse(&self.cron)
+            .map_err(|error| {
+                self.bad(format!(
+                    "has cron {:?}, which isn't valid ({error}); give minute 0-59, hour 0-23, day of the month 1-31, month 1-12 or JAN-DEC, and day of the week 0-7 or SUN-SAT, {CRON_EXAMPLE}",
+                    self.cron
+                ))
+            })
+    }
+
+    /// Its time zone, from the IANA time zone database built into this crate.
+    fn zone(&self) -> Result<Tz, SpecError> {
+        self.timezone_name().parse::<Tz>().map_err(|error| {
+            self.bad(format!(
+                "has timezone {:?}, which isn't an IANA time zone ({error}); use one such as \"America/New_York\" or \"Europe/London\", or leave timezone out for UTC",
+                self.timezone_name()
+            ))
+        })
+    }
+
+    fn bad(&self, reason: String) -> SpecError {
+        SpecError::BadSchedule {
+            name: self.name.clone(),
+            reason,
+        }
+    }
+}
+
+/// Whether one field of a cron uses only standard cron: `*`, numbers and
+/// three-letter names, in ranges, steps and lists. Extensions some cron
+/// readers take, such as `L`, `W`, `#`, `?` and `@daily`, are refused.
+fn standard_cron_field(field: &str) -> bool {
+    let value = |token: &str| {
+        !token.is_empty()
+            && (token.bytes().all(|b| b.is_ascii_digit())
+                || (token.len() == 3 && token.bytes().all(|b| b.is_ascii_alphabetic())))
+    };
+    field.split(',').all(|item| {
+        let (range, step) = match item.split_once('/') {
+            Some((range, step)) => (range, Some(step)),
+            None => (item, None),
+        };
+        let range_ok = range == "*"
+            || match range.split_once('-') {
+                Some((start, end)) => value(start) && value(end),
+                None => value(range),
+            };
+        range_ok
+            && step.is_none_or(|step| !step.is_empty() && step.bytes().all(|b| b.is_ascii_digit()))
+    })
 }
 
 #[cfg(test)]
@@ -655,6 +923,7 @@ worker = "node worker.js"
                 sleep: None,
                 sleep_after_seconds: None,
                 mcp: None,
+                schedules: Vec::new(),
             }
         );
         assert_eq!(
@@ -687,6 +956,7 @@ worker = "node worker.js"
                 sleep: None,
                 sleep_after_seconds: None,
                 mcp: None,
+                schedules: Vec::new(),
             }
         );
         assert_eq!(
@@ -808,6 +1078,7 @@ worker = "node worker.js"
                 sleep: None,
                 sleep_after_seconds: None,
                 mcp: None,
+                schedules: Vec::new(),
             };
         let web = |title: &str, command: &str, port| spec(title, Some(command), None, port);
         let worker = |command: &str, port| spec("Hi", None, Some(command), port);
@@ -1177,7 +1448,7 @@ start_timeout = 900
             let error = parse(text).unwrap_err();
             (error.code(), error.to_string())
         };
-        let message = "A background app has no address, so nothing could wake it once it sleeps. It would stop running without an error. Use `sleep = \"never\"` (the default for background apps), or make it a web app if it only needs to run when asked. A scheduler that wakes apps on a timer is planned.";
+        let message = "A background app with no schedule can't sleep: it has no address, so nothing would wake it. Add a [[schedule]] to wake it on a timer, or use `sleep = \"never\"`, the default for background apps.";
         assert_eq!(
             refused(&format!("sleep = \"auto\"\n{TICKER}")),
             ("sleep_needs_an_address", message.to_owned())
@@ -1279,5 +1550,617 @@ start_timeout = 900
                 assert_eq!(checked.code(), "app_mcp_invalid");
             }
         }
+    }
+
+    const DIGEST: &str = r#"
+[[schedule]]
+name = "digest"
+cron = "0 8 * * *"
+timezone = "America/New_York"
+run = "node jobs/digest.js"
+
+[[schedule]]
+name = "cleanup"
+cron = "*/15 * * * *"
+run = "sh cleanup.sh"
+"#;
+
+    fn schedule(name: &str, cron: &str, timezone: Option<&str>, run: &str) -> Schedule {
+        Schedule {
+            name: name.to_owned(),
+            cron: cron.to_owned(),
+            timezone: timezone.map(str::to_owned),
+            run: run.to_owned(),
+        }
+    }
+
+    fn at(time: &str) -> DateTime<Utc> {
+        time.parse().unwrap()
+    }
+
+    #[test]
+    fn reads_schedules_and_they_survive_the_trip_as_toml_and_json() {
+        let spec = parse(&format!("{TICKER}{DIGEST}")).unwrap();
+        assert_eq!(
+            spec.schedules,
+            [
+                schedule(
+                    "digest",
+                    "0 8 * * *",
+                    Some("America/New_York"),
+                    "node jobs/digest.js"
+                ),
+                schedule("cleanup", "*/15 * * * *", None, "sh cleanup.sh"),
+            ]
+        );
+        assert_eq!(spec.schedules[0].timezone_name(), "America/New_York");
+        assert_eq!(spec.schedules[1].timezone_name(), "UTC", "left out");
+        assert!(parse(TICKER).unwrap().schedules.is_empty());
+
+        let json = serde_json::to_value(&spec).unwrap();
+        assert_eq!(
+            json,
+            serde_json::json!({
+                "title": "Ticker",
+                "processes": {"worker": "node worker.js"},
+                "schedule": [
+                    {
+                        "name": "digest",
+                        "cron": "0 8 * * *",
+                        "timezone": "America/New_York",
+                        "run": "node jobs/digest.js",
+                    },
+                    {"name": "cleanup", "cron": "*/15 * * * *", "run": "sh cleanup.sh"},
+                ],
+            })
+        );
+        assert_eq!(serde_json::from_value::<AppSpec>(json).unwrap(), spec);
+        // No schedules, no key: older specs read the same.
+        assert_eq!(
+            serde_json::to_value(parse(TICKER).unwrap())
+                .unwrap()
+                .get("schedule"),
+            None
+        );
+
+        let written = toml::to_string(&spec).unwrap();
+        assert!(written.contains("[[schedule]]"), "{written}");
+        assert_eq!(parse(&written).unwrap(), spec);
+
+        let web = parse(&format!("{HELLO}{DIGEST}")).unwrap();
+        assert_eq!(web.schedules.len(), 2, "a web app may have schedules too");
+        let image = parse(&format!("{OPEN_SEO}{DIGEST}")).unwrap();
+        assert_eq!(image.schedules.len(), 2, "and an image app");
+    }
+
+    #[test]
+    fn unknown_keys_in_a_schedule_are_refused() {
+        for (key, field) in [
+            ("command = \"x\"", "command"),
+            ("seconds = 0", "seconds"),
+            ("catch_up = true", "catch_up"),
+        ] {
+            let error = parse(&format!(
+                "{TICKER}[[schedule]]\nname = \"a\"\ncron = \"0 8 * * *\"\nrun = \"x\"\n{key}\n"
+            ))
+            .unwrap_err();
+            assert_eq!(error.code(), "app_toml_invalid", "{key}: {error}");
+            assert!(
+                error
+                    .to_string()
+                    .contains(&format!("unknown field `{field}`")),
+                "{error}"
+            );
+        }
+        assert!(
+            serde_json::from_str::<AppSpec>(
+                r#"{"title":"x","processes":{"worker":"y"},"schedule":[{"name":"a","cron":"0 8 * * *","run":"x","extra":1}]}"#
+            )
+            .is_err()
+        );
+        for missing in ["name", "cron", "run"] {
+            let fields = [
+                ("name", "name = \"a\""),
+                ("cron", "cron = \"0 8 * * *\""),
+                ("run", "run = \"x\""),
+            ]
+            .into_iter()
+            .filter(|(key, _)| *key != missing)
+            .map(|(_, line)| line)
+            .collect::<Vec<_>>()
+            .join("\n");
+            let error = parse(&format!("{TICKER}[[schedule]]\n{fields}\n")).unwrap_err();
+            assert_eq!(error.code(), "app_toml_invalid");
+            assert!(
+                error
+                    .to_string()
+                    .contains(&format!("missing field `{missing}`")),
+                "{error}"
+            );
+        }
+        // `schedules` is the field's name in Rust, never in app.toml.
+        let error = parse(&format!(
+            "{TICKER}[[schedules]]\nname = \"a\"\ncron = \"0 8 * * *\"\nrun = \"x\"\n"
+        ))
+        .unwrap_err();
+        assert!(
+            error.to_string().contains("unknown field `schedules`"),
+            "{error}"
+        );
+    }
+
+    #[test]
+    fn a_single_schedule_table_is_refused_saying_to_double_its_brackets() {
+        for (body, name) in [
+            (
+                "name = \"digest\"\ncron = \"0 8 * * *\"\nrun = \"x\"\n",
+                "digest",
+            ),
+            ("cron = \"0 8 * * *\"\n", ""),
+        ] {
+            let error = parse(&format!("{TICKER}[schedule]\n{body}")).unwrap_err();
+            assert_eq!(error.code(), "app_schedule_invalid", "{error}");
+            assert_eq!(
+                error.to_string(),
+                format!(
+                    "schedule {name:?} is written as [schedule], with single brackets; write each schedule as its own [[schedule]] table, with double brackets"
+                )
+            );
+        }
+        // Written the right way, the same schedule reads.
+        let spec = parse(&format!(
+            "{TICKER}[[schedule]]\nname = \"digest\"\ncron = \"0 8 * * *\"\nrun = \"x\"\n"
+        ))
+        .unwrap();
+        assert_eq!(spec.schedules.len(), 1);
+    }
+
+    #[test]
+    fn every_bad_schedule_is_refused_saying_how_to_fix_it() {
+        let one = |name: &str, cron: &str, timezone: Option<&str>, run: &str| {
+            let timezone = timezone
+                .map(|zone| format!("timezone = {}\n", toml::Value::from(zone)))
+                .unwrap_or_default();
+            format!(
+                "[[schedule]]\nname = {}\ncron = {}\n{timezone}run = {}\n",
+                toml::Value::from(name),
+                toml::Value::from(cron),
+                toml::Value::from(run)
+            )
+        };
+        let good = |name: &str| one(name, "0 8 * * *", None, "x");
+        let long_name = "a".repeat(MAX_SCHEDULE_NAME_LEN + 1);
+        let long_run = "c".repeat(MAX_COMMAND_LEN + 1);
+        let too_many = (0..=MAX_SCHEDULES)
+            .map(|n| good(&format!("s{n}")))
+            .collect::<String>();
+        let cases = [
+            (
+                format!("{TICKER}{too_many}"),
+                "schedule \"s16\" is one too many: an app may have at most 16 schedules, and this one has 17",
+            ),
+            (
+                format!("title = \"Docs\"\nstatic = \"public\"\n{}", good("a")),
+                "schedule \"a\" is set on a static site, which runs no command of its own",
+            ),
+            (
+                format!("{TICKER}{}{}", good("a"), good("a")),
+                "schedule \"a\" is named twice; give each [[schedule]] its own name",
+            ),
+            (
+                format!("{TICKER}{}", one("a", "0 8 * * *", None, "")),
+                "schedule \"a\" has an empty run; give the command it runs",
+            ),
+            (
+                format!("{TICKER}{}", one("a", "0 8 * * *", None, " \t")),
+                "schedule \"a\" has an empty run",
+            ),
+            (
+                format!("{TICKER}{}", one("a", "0 8 * * *", None, &long_run)),
+                "schedule \"a\" has a run 4097 bytes long; keep it under 4096",
+            ),
+            (
+                format!("{TICKER}{}", one("a", "0 8 * * *", None, "run\0")),
+                "schedule \"a\" has a NUL byte in run",
+            ),
+            (
+                format!(
+                    "{TICKER}{}",
+                    one("a", "0 8 * * *", Some("Mars/Olympus"), "x")
+                ),
+                "schedule \"a\" has timezone \"Mars/Olympus\", which isn't an IANA time zone",
+            ),
+            (
+                format!("{TICKER}{}", one("a", "0 8 * * *", Some(""), "x")),
+                "schedule \"a\" has timezone \"\", which isn't an IANA time zone",
+            ),
+            (
+                format!(
+                    "{TICKER}{}",
+                    one("a", "0 8 * * *", Some("america/new_york"), "x")
+                ),
+                "which isn't an IANA time zone",
+            ),
+            (
+                format!("{TICKER}{}", one("a", "0 8 * *", None, "x")),
+                "schedule \"a\" has cron \"0 8 * *\", with 4 fields; give exactly 5: minute, hour, day of the month, month and day of the week, such as cron = \"0 8 * * *\" for 8:00 every day",
+            ),
+            (
+                format!("{TICKER}{}", one("a", "0 0 8 * * *", None, "x")),
+                "with 6 fields; give exactly 5",
+            ),
+            (
+                format!("{TICKER}{}", one("a", "0 8 * * * 2026", None, "x")),
+                "with 6 fields; give exactly 5",
+            ),
+            (
+                format!("{TICKER}{}", one("a", "0 0 8 * * * 2026", None, "x")),
+                "with 7 fields; give exactly 5",
+            ),
+            (
+                format!("{TICKER}{}", one("a", "@daily", None, "x")),
+                "with 1 fields; give exactly 5",
+            ),
+            (
+                format!("{TICKER}{}", one("a", "", None, "x")),
+                "with 0 fields; give exactly 5",
+            ),
+            (
+                format!("{TICKER}{}", one("a", "60 * * * *", None, "x")),
+                "schedule \"a\" has cron \"60 * * * *\", which isn't valid (",
+            ),
+            (
+                format!("{TICKER}{}", one("a", "0 0 30 2 *", None, "x")),
+                "schedule \"a\" has cron \"0 0 30 2 *\", which never runs, since no month it names has that day, such as February 30",
+            ),
+            (
+                format!("{TICKER}{}", one("a", "0 0 L * *", None, "x")),
+                "schedule \"a\" has cron \"0 0 L * *\", which isn't standard cron",
+            ),
+        ];
+        for (text, want) in cases {
+            let error = parse(&text).unwrap_err();
+            assert_eq!(error.code(), "app_schedule_invalid", "{text}: {error}");
+            assert!(error.to_string().starts_with("schedule "), "{error}");
+            assert!(error.to_string().contains(want), "{text}: {error}");
+        }
+        // At the limit is fine.
+        let most = (0..MAX_SCHEDULES)
+            .map(|n| good(&format!("s{n}")))
+            .collect::<String>();
+        assert_eq!(
+            parse(&format!("{TICKER}{most}")).unwrap().schedules.len(),
+            16
+        );
+        assert!(
+            parse(&format!(
+                "{TICKER}{}",
+                one("a", "0 8 * * *", None, &"c".repeat(MAX_COMMAND_LEN))
+            ))
+            .is_ok()
+        );
+
+        // Names.
+        for name in [
+            "",
+            "Digest",
+            "1digest",
+            "-digest",
+            "di_gest",
+            "di gest",
+            "dígest",
+            "digest/run",
+            "..",
+            long_name.as_str(),
+        ] {
+            let error = parse(&format!("{TICKER}{}", good(name))).unwrap_err();
+            assert_eq!(error.code(), "app_schedule_invalid", "{name:?}");
+            assert!(
+                error
+                    .to_string()
+                    .contains("has a name that isn't one a schedule can have; use 1 to 32 lowercase letters, digits and -, starting with a letter"),
+                "{error}"
+            );
+            assert!(!is_schedule_name(name), "{name:?}");
+        }
+        for name in [
+            "a",
+            "digest",
+            "a-1",
+            "digest-",
+            "a--b",
+            &"a".repeat(MAX_SCHEDULE_NAME_LEN),
+        ] {
+            assert!(is_schedule_name(name), "{name:?}");
+            assert!(
+                parse(&format!("{TICKER}{}", good(name))).is_ok(),
+                "{name:?}"
+            );
+        }
+
+        // Crons that aren't standard 5-field cron, or don't parse, or never run.
+        for cron in [
+            "0 0 L * *",
+            "0 0 LW * *",
+            "0 0 15W * *",
+            "0 0 * * 5#2",
+            "0 0 * * 5L",
+            "0 0 1 * +MON",
+            "0 0 ? * *",
+            "0 0 * * ?",
+            "0 8 * * MONDAY",
+            "0 8 * * M",
+            "0/10 * * * *",
+            "/10 * * * *",
+            "*/ * * * *",
+            "*/x * * * *",
+            "1-2-3 * * * *",
+            "1,,2 * * * *",
+            "0 8 * * *-1",
+            "60 * * * *",
+            "* 24 * * *",
+            "* * 0 * *",
+            "* * 32 * *",
+            "* * * 0 *",
+            "* * * 13 *",
+            "* * * * 8",
+            "* * * FOO *",
+            "* * * * FOO",
+            "*/0 * * * *",
+            "0 0 30 2 *",
+            "0 0 31 2 *",
+            "0 0 31 4,6,9,11 *",
+            "0 0 30-31 2 *",
+        ] {
+            let error = parse(&format!("{TICKER}{}", one("a", cron, None, "x"))).unwrap_err();
+            assert_eq!(error.code(), "app_schedule_invalid", "{cron:?}: {error}");
+            assert!(
+                error.to_string().contains("such as cron = \"0 8 * * *\""),
+                "{error}"
+            );
+        }
+        for cron in [
+            "0 8 * * *",
+            "*/15 * * * *",
+            "0 9 * * MON-FRI",
+            "0 9 * * mon-fri",
+            "30 6 1,15 * *",
+            "0 0 1 JAN *",
+            "0 12 * jan-mar/2 sun",
+            "0-30/10 8-17 * * 1-5",
+            "0 8 * * 7",
+            "0 0 29 2 *",
+            "0 0 30 2 MON",
+            " 0  8 * *\t* ",
+        ] {
+            assert!(
+                parse(&format!("{TICKER}{}", one("a", cron, None, "x"))).is_ok(),
+                "{cron:?}"
+            );
+        }
+        for zone in [
+            "UTC",
+            "America/New_York",
+            "Europe/London",
+            "Asia/Kolkata",
+            "Pacific/Chatham",
+        ] {
+            assert!(
+                parse(&format!(
+                    "{TICKER}{}",
+                    one("a", "0 8 * * *", Some(zone), "x")
+                ))
+                .is_ok(),
+                "{zone}"
+            );
+        }
+    }
+
+    #[test]
+    fn the_control_planes_check_refuses_bad_schedules_too() {
+        let with = |schedules: Vec<Schedule>| {
+            let mut spec = parse(TICKER).unwrap();
+            spec.schedules = schedules;
+            spec.check()
+        };
+        assert_eq!(with(vec![schedule("a", "0 8 * * *", None, "x")]), Ok(()));
+        for schedules in [
+            vec![schedule("A", "0 8 * * *", None, "x")],
+            vec![schedule("a", "0 8 * * *", None, "")],
+            vec![schedule("a", "0 8 * * *", None, "x\0")],
+            vec![schedule("a", "0 8 * * *", Some("Nowhere"), "x")],
+            vec![schedule("a", "0 8 * * * *", None, "x")],
+            vec![schedule("a", "0 0 31 4 *", None, "x")],
+            vec![
+                schedule("a", "0 8 * * *", None, "x"),
+                schedule("a", "0 9 * * *", None, "y"),
+            ],
+            (0..=MAX_SCHEDULES)
+                .map(|n| schedule(&format!("s{n}"), "0 8 * * *", None, "x"))
+                .collect(),
+        ] {
+            let error = with(schedules.clone()).unwrap_err();
+            assert_eq!(error.code(), "app_schedule_invalid", "{schedules:?}");
+        }
+        let mut site = parse("title = \"Docs\"\nstatic = \"public\"\n").unwrap();
+        site.schedules = vec![schedule("a", "0 8 * * *", None, "x")];
+        assert_eq!(site.check().unwrap_err().code(), "app_schedule_invalid");
+    }
+
+    #[test]
+    fn a_background_app_with_a_schedule_may_sleep() {
+        let spec = parse(&format!("sleep = \"auto\"\n{TICKER}{DIGEST}")).unwrap();
+        assert_eq!(spec.resolved_sleep(), Ok(Sleep::Auto));
+        let image = parse(&format!(
+            "title = \"Box\"\nimage = \"alpine:3\"\nsleep = \"auto\"\n[processes]\nworker = \"sleep infinity\"\n{DIGEST}"
+        ))
+        .unwrap();
+        assert_eq!(image.resolved_sleep(), Ok(Sleep::Auto));
+        // Left out, it still never sleeps.
+        let left_out = parse(&format!("{TICKER}{DIGEST}")).unwrap();
+        assert_eq!(left_out.resolved_sleep(), Ok(Sleep::Never));
+        // The control plane's check agrees, and without the schedule refuses.
+        let mut checked = spec.clone();
+        assert_eq!(checked.check(), Ok(()));
+        checked.schedules.clear();
+        assert_eq!(checked.check(), Err(SpecError::SleepWithoutAddress));
+        assert_eq!(
+            SpecError::SleepWithoutAddress.code(),
+            "sleep_needs_an_address"
+        );
+    }
+
+    #[test]
+    fn next_after_in_utc_is_strictly_after_and_on_whole_minutes() {
+        let daily = schedule("a", "0 8 * * *", None, "x");
+        for (after, next) in [
+            ("2026-01-01T00:00:00Z", "2026-01-01T08:00:00Z"),
+            ("2026-01-01T07:59:59.500Z", "2026-01-01T08:00:00Z"),
+            // A run's own time gives the one after it.
+            ("2026-01-01T08:00:00Z", "2026-01-02T08:00:00Z"),
+            ("2026-01-01T08:00:00.500Z", "2026-01-02T08:00:00Z"),
+            ("2026-12-31T08:00:00Z", "2027-01-01T08:00:00Z"),
+        ] {
+            assert_eq!(daily.next_after(at(after)), Ok(at(next)), "{after}");
+        }
+        let quarter = schedule("a", "*/15 * * * *", Some("UTC"), "x");
+        assert_eq!(
+            quarter.next_after(at("2026-11-14T10:07:31Z")),
+            Ok(at("2026-11-14T10:15:00Z"))
+        );
+        // Friday's run gives Monday's.
+        let weekdays = schedule("a", "0 9 * * MON-FRI", None, "x");
+        assert_eq!(
+            weekdays.next_after(at("2026-11-13T09:00:00Z")),
+            Ok(at("2026-11-16T09:00:00Z"))
+        );
+        // February 29 comes once in four years.
+        let leap = schedule("a", "0 0 29 2 *", None, "x");
+        assert_eq!(
+            leap.next_after(at("2026-01-01T00:00:00Z")),
+            Ok(at("2028-02-29T00:00:00Z"))
+        );
+        // With both a day of the month and a day of the week, either one
+        // runs it, as in standard cron: Friday the 11th, Sunday the 13th, then
+        // Friday the 18th.
+        let either = schedule("a", "0 0 13 * FRI", None, "x");
+        assert_eq!(
+            either.next_after(at("2026-12-10T00:00:00Z")),
+            Ok(at("2026-12-11T00:00:00Z"))
+        );
+        assert_eq!(
+            either.next_after(at("2026-12-11T00:00:00Z")),
+            Ok(at("2026-12-13T00:00:00Z"))
+        );
+        assert_eq!(
+            either.next_after(at("2026-12-13T00:00:00Z")),
+            Ok(at("2026-12-18T00:00:00Z"))
+        );
+    }
+
+    #[test]
+    fn next_after_reads_cron_in_the_schedules_time_zone() {
+        let digest = schedule("a", "0 8 * * *", Some("America/New_York"), "x");
+        // 8:00 in New York is 13:00 UTC in winter and 12:00 in summer.
+        assert_eq!(
+            digest.next_after(at("2026-01-15T00:00:00Z")),
+            Ok(at("2026-01-15T13:00:00Z"))
+        );
+        assert_eq!(
+            digest.next_after(at("2026-07-01T12:30:00Z")),
+            Ok(at("2026-07-02T12:00:00Z"))
+        );
+        let kolkata = schedule("a", "0 8 * * *", Some("Asia/Kolkata"), "x");
+        assert_eq!(
+            kolkata.next_after(at("2026-01-15T00:00:00Z")),
+            Ok(at("2026-01-15T02:30:00Z"))
+        );
+        // Days of the week are the zone's: Monday 0:30 in Tokyo is Sunday in UTC.
+        let tokyo = schedule("a", "30 0 * * MON", Some("Asia/Tokyo"), "x");
+        assert_eq!(
+            tokyo.next_after(at("2026-11-14T00:00:00Z")),
+            Ok(at("2026-11-15T15:30:00Z"))
+        );
+    }
+
+    /// In New York, 2026's clocks go from 2:00 to 3:00 on March 8, and from
+    /// 2:00 back to 1:00 on November 1. These pin what each kind of schedule
+    /// does then, as `Schedule::next_after` says.
+    #[test]
+    fn next_after_across_clock_changes() {
+        let ny = |cron: &str| schedule("a", cron, Some("America/New_York"), "x");
+        // March 8, 06:00 UTC is 1:00 EST, and 07:00 UTC is 3:00 EDT.
+        let skipped = ny("30 2 * * *");
+        assert_eq!(
+            skipped.next_after(at("2026-03-08T06:00:00Z")),
+            Ok(at("2026-03-08T07:00:00Z")),
+            "2:30 doesn't exist, so a fixed time runs at 3:00, once"
+        );
+        assert_eq!(
+            skipped.next_after(at("2026-03-08T07:00:00Z")),
+            Ok(at("2026-03-09T06:30:00Z")),
+            "then 2:30 EDT the next day"
+        );
+        assert_eq!(
+            ny("*/30 * * * *").next_after(at("2026-03-08T06:30:00Z")),
+            Ok(at("2026-03-08T07:00:00Z")),
+            "1:30 EST is followed by 3:00 EDT: 2:00 and 2:30 are skipped"
+        );
+        assert_eq!(
+            ny("30 * * * *").next_after(at("2026-03-08T06:30:00Z")),
+            Ok(at("2026-03-08T07:30:00Z")),
+            "an hourly 2:30 is skipped, not moved"
+        );
+        // November 1, 05:30 UTC is 1:30 EDT, and 06:30 UTC is 1:30 EST.
+        let repeated = ny("30 1 * * *");
+        assert_eq!(
+            repeated.next_after(at("2026-11-01T05:00:00Z")),
+            Ok(at("2026-11-01T05:30:00Z")),
+            "a fixed time runs the first time 1:30 comes"
+        );
+        assert_eq!(
+            repeated.next_after(at("2026-11-01T05:30:00Z")),
+            Ok(at("2026-11-02T06:30:00Z")),
+            "and not the second"
+        );
+        let every = ny("*/30 * * * *");
+        for (after, next) in [
+            ("2026-11-01T05:30:00Z", "2026-11-01T06:00:00Z"),
+            ("2026-11-01T06:00:00Z", "2026-11-01T06:30:00Z"),
+            ("2026-11-01T06:30:00Z", "2026-11-01T07:00:00Z"),
+        ] {
+            assert_eq!(
+                every.next_after(at(after)),
+                Ok(at(next)),
+                "a repeating schedule runs through both 1:00 hours: {after}"
+            );
+        }
+    }
+
+    #[test]
+    fn next_after_refuses_what_the_check_does() {
+        let refused = |schedule: Schedule| {
+            schedule
+                .next_after(at("2026-01-01T00:00:00Z"))
+                .unwrap_err()
+                .code()
+        };
+        assert_eq!(
+            refused(schedule("a", "0 0 30 2 *", None, "x")),
+            "app_schedule_invalid",
+            "never runs"
+        );
+        assert_eq!(
+            refused(schedule("a", "0 8 * * * *", None, "x")),
+            "app_schedule_invalid"
+        );
+        assert_eq!(
+            refused(schedule("a", "0 0 L * *", None, "x")),
+            "app_schedule_invalid"
+        );
+        assert_eq!(
+            refused(schedule("a", "0 8 * * *", Some("Nowhere/Town"), "x")),
+            "app_schedule_invalid"
+        );
     }
 }
