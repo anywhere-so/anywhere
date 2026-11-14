@@ -2,9 +2,34 @@
 
 Deploy and manage apps on [Anywhere](https://anywhere.so) from your terminal or AI agent.
 
+Anywhere is the private cloud for internal tools, personal software, and MCP servers
+that you build with coding agents such as Claude Code, Codex, Cursor, and OpenCode.
+The fastest start is to paste this into your agent:
+
+```text
+Set up anywhere for me: https://anywhere.so/setup
+```
+
+- **Private by default.** Every app starts restricted to you, behind Google, GitHub,
+  or email sign-in. Invite people by email with Can use or Can edit, and they never
+  cost a per-user fee.
+- **One folder, one command.** An app is a folder with an `app.toml`; `anywhere deploy`
+  builds it and runs it in its own gVisor sandbox with a persistent Linux disk, so
+  databases and uploaded files survive restarts and deploys.
+- **Pay for use.** Idle web apps sleep and cost nothing in compute; workers can stay
+  on around the clock. Free includes $3 of usage a month, and Pro is $10 with $10 of
+  usage included. See [pricing](https://anywhere.so/#pricing).
+- **MCP servers and connectors.** Set `mcp = true` and the platform handles OAuth for
+  an app that serves MCP. Add `https://anywhere.so/mcp` to Claude, ChatGPT, Cursor, or
+  Codex to use the tools of every MCP app you own
+  ([connect your AI](https://anywhere.so/docs/connect)).
+
+Read the [docs](https://anywhere.so/docs) for `app.toml`, runtimes, storage, secrets,
+and sharing.
+
 This repository contains the `anywhere` CLI, its installer, the skill bundled into
 that CLI, shared app validation, and the HTTP and exec contracts needed to build it.
-The hosted service is a separate project.
+The hosted platform at anywhere.so is developed separately.
 
 ## Install
 
